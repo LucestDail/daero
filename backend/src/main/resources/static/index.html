@@ -55,6 +55,10 @@
     #docsMain section { scroll-margin-top: 73px; padding-bottom: 8px; }
     #docsMain h2 { font-size: 20px; margin: 32px 0 8px; }
     #docsMain h2:first-child { margin-top: 0; }
+    #docsMain h4 { font-size: 13px; color: #6b7280; margin: 16px 0 4px; text-transform: uppercase; letter-spacing: .03em; }
+    #docsMain section { border-bottom: 1px solid #f1f5f9; margin-bottom: 8px; }
+    .tryInput { flex: 1; min-width: 280px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 12.5px; }
+    .tryResp { background: #f8fafc; color: #0f172a; border: 1px solid #e5e7eb; }
     .ep { font-family: ui-monospace, monospace; font-size: 15px; background: #f3f4f6; padding: 6px 10px; border-radius: 8px; display: inline-block; }
     .method { color: #059669; font-weight: 700; }
     #docsMain p { color: #374151; font-size: 14px; line-height: 1.6; }
@@ -123,116 +127,23 @@
 
 <!-- API 문서 뷰 -->
 <div id="docsView" class="view">
-  <nav id="docsNav">
-    <div class="navGroup">시작</div>
-    <a href="#sec-overview">개요</a>
-    <a href="#sec-console">직접 호출해보기</a>
-    <div class="navGroup">엔드포인트</div>
-    <a href="#sec-coords">plan/coords (좌표)</a>
-    <a href="#sec-plan">plan (정류장ID)</a>
-    <a href="#sec-search">plan/search</a>
-    <a href="#sec-near">plan/near</a>
-    <a href="#sec-gtfs">gtfs/stats·timetable</a>
-    <div class="navGroup">참고</div>
-    <a href="#sec-response">응답 스키마</a>
-    <a href="#sec-examples">예제 코드</a>
-    <a href="#sec-notes">주의·한계</a>
-  </nav>
-
+  <nav id="docsNav"><!-- JS 자동 생성 --></nav>
   <div id="docsMain">
     <section id="sec-overview">
       <h2>개요</h2>
       <p>daero 는 GTFS 기반 국내 대중교통 door-to-door 경로탐색 API 입니다.
-         <b>인증(API 키) 불필요</b>. 모든 응답은 <code>application/json; charset=UTF-8</code>.
-         CORS 전체 허용(<code>*</code>).</p>
+         <b>인증(API 키) 불필요</b>. 모든 응답은 <code>application/json; charset=UTF-8</code>. CORS 전체 허용.
+         각 엔드포인트에 <b>파라미터·예제 요청·예제 코드(curl/JS/Python)·호출 테스트</b>가 함께 있습니다.</p>
       <table>
         <tr><th>Base URL</th><td><code id="baseUrl">http://localhost:8090</code></td></tr>
         <tr><th>인증</th><td>없음 (공개)</td></tr>
         <tr><th>메서드</th><td>GET</td></tr>
-        <tr><th>시각 형식</th><td><code>HH:MM</code> 또는 <code>HH:MM:SS</code> (자정 기준, 24시 초과 = 심야)</td></tr>
+        <tr><th>시각 형식</th><td><code>HH:MM</code> / <code>HH:MM:SS</code> (자정 기준, 24시 초과 = 심야)</td></tr>
       </table>
     </section>
 
-    <section id="sec-console">
-      <h2>직접 호출해보기</h2>
-      <p>아래에 경로를 넣고 <b>보내기</b>를 누르면 실제 응답이 표시됩니다. 프리셋으로 채워볼 수 있어요.</p>
-      <div class="console">
-        <div class="row">
-          <button class="preset" data-q="/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2">시청→강남</button>
-          <button class="preset" data-q="/api/plan/coords?fromLat=37.5563&fromLon=126.9723&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=3">서울역→강남(대안3)</button>
-          <button class="preset" data-q="/api/plan/search?q=서울역&limit=5">정류장 검색</button>
-          <button class="preset" data-q="/api/gtfs/stats">gtfs/stats</button>
-        </div>
-        <div class="row">
-          <input type="text" id="reqPath" value="/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2"/>
-          <button id="send">보내기</button>
-        </div>
-        <div class="times" id="reqStatus"></div>
-        <pre id="reqResp" style="max-height:360px; overflow:auto">응답이 여기에 표시됩니다.</pre>
-      </div>
-    </section>
-
-    <section id="sec-coords">
-      <h2><span class="method">GET</span> /api/plan/coords</h2>
-      <p>출발·도착 <b>좌표</b> 간 door-to-door 경로. 근처 정류장까지 도보 접근 → 대중교통 → 하차 도보를 포함하며,
-         추천 경로와 대안 경로들을 함께 반환합니다.</p>
-      <table>
-        <tr><th>파라미터</th><th>필수</th><th>타입</th><th>기본</th><th>설명</th></tr>
-        <tr><td>fromLat</td><td class="req">필수</td><td>double</td><td>—</td><td>출발 위도</td></tr>
-        <tr><td>fromLon</td><td class="req">필수</td><td>double</td><td>—</td><td>출발 경도</td></tr>
-        <tr><td>toLat</td><td class="req">필수</td><td>double</td><td>—</td><td>도착 위도</td></tr>
-        <tr><td>toLon</td><td class="req">필수</td><td>double</td><td>—</td><td>도착 경도</td></tr>
-        <tr><td>time</td><td class="opt2">선택</td><td>string</td><td>08:00</td><td>출발 시각 <code>HH:MM</code></td></tr>
-        <tr><td>alternatives</td><td class="opt2">선택</td><td>int</td><td>1</td><td>대안 경로 수 (0~10). 응답 <code>options</code> = 추천 1 + 대안 N</td></tr>
-      </table>
-      <p>예시 요청:</p>
-      <pre><code>GET /api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2</code></pre>
-      <button class="tryBtn" data-q="/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2">이 요청 콘솔에서 보내기 ↑</button>
-    </section>
-
-    <section id="sec-plan">
-      <h2><span class="method">GET</span> /api/plan</h2>
-      <p><b>정류장 ID</b> 간 경로. 좌표 대신 정류장 ID를 직접 지정할 때 사용(<code>/api/plan/search</code> 로 ID 조회).</p>
-      <table>
-        <tr><th>파라미터</th><th>필수</th><th>타입</th><th>기본</th><th>설명</th></tr>
-        <tr><td>fromStop</td><td class="req">필수</td><td>string</td><td>—</td><td>출발 정류장 ID</td></tr>
-        <tr><td>toStop</td><td class="req">필수</td><td>string</td><td>—</td><td>도착 정류장 ID</td></tr>
-        <tr><td>time</td><td class="opt2">선택</td><td>string</td><td>08:00</td><td>출발 시각 <code>HH:MM</code></td></tr>
-        <tr><td>alternatives</td><td class="opt2">선택</td><td>int</td><td>1</td><td>대안 경로 수 (0~10)</td></tr>
-      </table>
-      <pre><code>GET /api/plan?fromStop=RS_ACC1_S-1-0150&toStop=RS_ACC1_S-1-0222&time=09:00</code></pre>
-    </section>
-
-    <section id="sec-search">
-      <h2><span class="method">GET</span> /api/plan/search</h2>
-      <p>이름으로 정류장 검색. 정류장 ID·좌표를 반환합니다.</p>
-      <table>
-        <tr><th>파라미터</th><th>필수</th><th>타입</th><th>기본</th><th>설명</th></tr>
-        <tr><td>q</td><td class="req">필수</td><td>string</td><td>—</td><td>정류장 이름(부분 일치)</td></tr>
-        <tr><td>limit</td><td class="opt2">선택</td><td>int</td><td>20</td><td>최대 결과 수</td></tr>
-      </table>
-      <pre><code>GET /api/plan/search?q=서울역&limit=5
-→ [ { "stopId": "...", "name": "서울역", "lat": 37.55, "lon": 126.97 }, ... ]</code></pre>
-    </section>
-
-    <section id="sec-near">
-      <h2><span class="method">GET</span> /api/plan/near</h2>
-      <p>좌표 근처 정류장을 도보 거리와 함께 반환(모드 접두어 포함 — <code>BS</code>버스·<code>RS</code>철도/지하철 등).</p>
-      <table>
-        <tr><th>파라미터</th><th>필수</th><th>타입</th><th>기본</th><th>설명</th></tr>
-        <tr><td>lat, lon</td><td class="req">필수</td><td>double</td><td>—</td><td>기준 좌표</td></tr>
-        <tr><td>radius</td><td class="opt2">선택</td><td>double</td><td>800</td><td>반경(m)</td></tr>
-      </table>
-      <pre><code>GET /api/plan/near?lat=37.5665&lon=126.978&radius=800
-→ [ { "stopId": "...", "prefix": "BS", "name": "...", "walkSec": 120 }, ... ]</code></pre>
-    </section>
-
-    <section id="sec-gtfs">
-      <h2><span class="method">GET</span> /api/gtfs/stats · /api/gtfs/timetable</h2>
-      <p>적재된 GTFS 카운트(<code>stats</code>)와 빌드된 경로 자료구조 상태(<code>timetable</code>, 모드별 패턴 포함). 헬스체크·검증용.</p>
-      <pre><code>GET /api/gtfs/stats     → { "loaded": true, "stops": 220577, "routes": 30895, ... }
-GET /api/gtfs/timetable → { "built": true, "patterns": 33071, "patternsByMode": {...} }</code></pre>
-    </section>
+    <!-- 엔드포인트 카드: JS 자동 생성 -->
+    <div id="epContainer"></div>
 
     <section id="sec-response">
       <h2>응답 스키마 (경로 API 공통)</h2>
@@ -246,7 +157,7 @@ GET /api/gtfs/timetable → { "built": true, "patterns": 33071, "patternsByMode"
         <tr><td>options[].departure, arrival</td><td>string</td><td>출발·도착 시각 <code>HH:MM</code></td></tr>
         <tr><td>options[].durationMin</td><td>int</td><td>총 소요(분)</td></tr>
         <tr><td>options[].transfers</td><td>int</td><td>환승 횟수</td></tr>
-        <tr><td>options[].estimatedFareKrw</td><td>int</td><td>예상 요금(원, 도시 통합요금 근사)</td></tr>
+        <tr><td>options[].estimatedFareKrw</td><td>int</td><td>예상 요금(원, 근사)</td></tr>
         <tr><td>options[].modes[]</td><td>string[]</td><td>사용 교통수단</td></tr>
         <tr><td>options[].legs[]</td><td>array</td><td>구간 목록</td></tr>
         <tr><td>legs[].mode</td><td>string</td><td><code>BUS·SUBWAY·RAIL·AIR·FERRY·WALK</code></td></tr>
@@ -267,19 +178,10 @@ GET /api/gtfs/timetable → { "built": true, "patterns": 33071, "patternsByMode"
 }</pre>
     </section>
 
-    <section id="sec-examples">
-      <h2>예제 코드</h2>
-      <div class="codeTabs">
-        <div class="codeTab active" data-lang="curl">curl</div>
-        <div class="codeTab" data-lang="js">JavaScript</div>
-        <div class="codeTab" data-lang="py">Python</div>
-      </div>
-      <pre><span class="copy" id="copyBtn">복사</span><code id="codeText"></code></pre>
-    </section>
-
     <section id="sec-notes">
       <h2>주의 · 한계</h2>
-      <p>· 요금은 도시 통합요금 <b>근사치</b>(철도·항공 실요금 미반영).<br>
+      <p>· <b>alternatives</b> 는 <u>최대치</u>입니다. 실제 반환 수는 그 경로에 존재하는 서로 다른 최적 경로 개수에 따라 그보다 적을 수 있습니다.<br>
+         · 요금은 도시 통합요금 <b>근사치</b>(철도·항공 실요금 미반영).<br>
          · 경로선 좌표는 정류장 직선 연결(정밀 선형 데이터 없음).<br>
          · GTFS 스냅샷 기반(정적) — 실시간 지연 미반영, "예상 경로·소요시간" 용도.<br>
          · 지도 타일 © OpenStreetMap, 대중교통 데이터는 각 제공처 이용조건을 따릅니다.</p>
@@ -471,50 +373,140 @@ GET /api/gtfs/timetable → { "built": true, "patterns": 33071, "patternsByMode"
     }).join('');
   }
 
-  // ── 문서: 콘솔 ──
-  function fill(q) { $('reqPath').value = q; $('docsView').scrollIntoView; document.querySelector('a[href="#sec-console"]').click(); }
-  document.querySelectorAll('.preset').forEach(b => b.addEventListener('click', () => { $('reqPath').value = b.dataset.q; }));
-  document.querySelectorAll('.tryBtn').forEach(b => b.addEventListener('click', () => {
-    $('reqPath').value = b.dataset.q; location.hash = '#sec-console'; $('send').click();
+  // ── 문서: 엔드포인트 정의(Swagger식 카드 자동 생성) ──
+  const ENDPOINTS = [
+    { id: 'coords', navLabel: 'plan/coords', method: 'GET', path: '/api/plan/coords',
+      desc: '출발·도착 <b>좌표</b> 간 door-to-door 경로. 근처 정류장 도보 접근 → 대중교통 → 하차 도보. 추천 + 대안 경로 반환.',
+      params: [
+        { n: 'fromLat', req: 1, t: 'double', d: '', desc: '출발 위도' },
+        { n: 'fromLon', req: 1, t: 'double', d: '', desc: '출발 경도' },
+        { n: 'toLat', req: 1, t: 'double', d: '', desc: '도착 위도' },
+        { n: 'toLon', req: 1, t: 'double', d: '', desc: '도착 경도' },
+        { n: 'time', req: 0, t: 'string', d: '08:00', desc: '출발 시각 HH:MM' },
+        { n: 'alternatives', req: 0, t: 'int', d: '1', desc: '대안 경로 수 0~10(최대치). options = 추천 1 + 대안 N' },
+      ],
+      example: '/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2' },
+    { id: 'plan', navLabel: 'plan (정류장ID)', method: 'GET', path: '/api/plan',
+      desc: '<b>정류장 ID</b> 간 경로. 좌표 대신 정류장 ID 지정(<code>plan/search</code>로 ID 조회).',
+      params: [
+        { n: 'fromStop', req: 1, t: 'string', d: '', desc: '출발 정류장 ID' },
+        { n: 'toStop', req: 1, t: 'string', d: '', desc: '도착 정류장 ID' },
+        { n: 'time', req: 0, t: 'string', d: '08:00', desc: '출발 시각 HH:MM' },
+        { n: 'alternatives', req: 0, t: 'int', d: '1', desc: '대안 경로 수 0~10' },
+      ],
+      example: '/api/plan?fromStop=RS_ACC1_S-1-0150&toStop=RS_ACC1_S-1-0222&time=09:00' },
+    { id: 'search', navLabel: 'plan/search', method: 'GET', path: '/api/plan/search',
+      desc: '이름으로 정류장 검색. 정류장 ID·좌표 반환.',
+      params: [
+        { n: 'q', req: 1, t: 'string', d: '', desc: '정류장 이름(부분 일치)' },
+        { n: 'limit', req: 0, t: 'int', d: '20', desc: '최대 결과 수' },
+      ],
+      example: '/api/plan/search?q=서울역&limit=5' },
+    { id: 'near', navLabel: 'plan/near', method: 'GET', path: '/api/plan/near',
+      desc: '좌표 근처 정류장을 도보 거리와 함께 반환(모드 접두어 BS버스·RS철도/지하철 등).',
+      params: [
+        { n: 'lat', req: 1, t: 'double', d: '', desc: '기준 위도' },
+        { n: 'lon', req: 1, t: 'double', d: '', desc: '기준 경도' },
+        { n: 'radius', req: 0, t: 'double', d: '800', desc: '반경(m)' },
+      ],
+      example: '/api/plan/near?lat=37.5665&lon=126.978&radius=800' },
+    { id: 'stats', navLabel: 'gtfs/stats', method: 'GET', path: '/api/gtfs/stats',
+      desc: '적재된 GTFS 카운트(stops/routes/trips/stopTimes 등). 헬스체크·검증용.',
+      params: [], example: '/api/gtfs/stats' },
+    { id: 'timetable', navLabel: 'gtfs/timetable', method: 'GET', path: '/api/gtfs/timetable',
+      desc: '빌드된 경로 자료구조 상태(patterns, 모드별 패턴 patternsByMode 등).',
+      params: [], example: '/api/gtfs/timetable' },
+  ];
+
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  function codeFor(ep, lang) {
+    const url = API_BASE + ep.example;
+    if (lang === 'curl') return `curl "${url}"`;
+    if (lang === 'js') return `const res = await fetch(\n  "${url}"\n);\nconst data = await res.json();\nconsole.log(data);`;
+    // python
+    const q = ep.example.split('?')[1] || '';
+    const params = q.split('&').filter(Boolean).map(kv => {
+      const [k, v] = kv.split('='); return `    "${k}": "${decodeURIComponent(v)}",`;
+    }).join('\n');
+    return `import requests\nr = requests.get(\n    "${API_BASE}${ep.path}",\n    params={\n${params}\n    },\n)\nprint(r.json())`;
+  }
+
+  function epCard(ep) {
+    const rows = ep.params.length
+      ? `<h4>파라미터</h4><table><tr><th>이름</th><th>필수</th><th>타입</th><th>기본</th><th>설명</th></tr>`
+        + ep.params.map(p => `<tr><td>${p.n}</td><td class="${p.req ? 'req' : 'opt2'}">${p.req ? '필수' : '선택'}</td><td>${p.t}</td><td>${p.d || '—'}</td><td>${p.desc}</td></tr>`).join('')
+        + `</table>`
+      : `<p class="times">파라미터 없음</p>`;
+    return `<section id="sec-${ep.id}">
+      <h2><span class="method">${ep.method}</span> ${ep.path}</h2>
+      <p>${ep.desc}</p>
+      ${rows}
+      <h4>예제 요청</h4>
+      <pre><code>${ep.method} ${esc(ep.example)}</code></pre>
+      <h4>예제 코드</h4>
+      <div class="codeTabs" data-ep="${ep.id}">
+        <div class="codeTab active" data-lang="curl">curl</div>
+        <div class="codeTab" data-lang="js">JavaScript</div>
+        <div class="codeTab" data-lang="py">Python</div>
+      </div>
+      <pre><span class="copy" data-copy="${ep.id}">복사</span><code class="codeText" id="code-${ep.id}"></code></pre>
+      <h4>호출 테스트</h4>
+      <p class="times">요청 경로를 수정해 보낼 수 있습니다.</p>
+      <div class="row"><input type="text" class="tryInput" data-ep="${ep.id}" value="${esc(ep.example)}"><button class="tryGo" data-ep="${ep.id}">보내기</button></div>
+      <div class="times tryStatus" id="st-${ep.id}"></div>
+      <pre class="tryResp" id="rp-${ep.id}" style="max-height:300px; overflow:auto">응답이 여기에 표시됩니다.</pre>
+    </section>`;
+  }
+
+  // 카드 렌더
+  $('epContainer').innerHTML = ENDPOINTS.map(epCard).join('');
+
+  // 예제 코드 초기화 + 탭
+  ENDPOINTS.forEach(ep => { $('code-' + ep.id).textContent = codeFor(ep, 'curl'); });
+  document.querySelectorAll('.codeTabs').forEach(tabs => {
+    const ep = ENDPOINTS.find(e => e.id === tabs.dataset.ep);
+    tabs.querySelectorAll('.codeTab').forEach(tab => tab.addEventListener('click', () => {
+      tabs.querySelectorAll('.codeTab').forEach(x => x.classList.remove('active'));
+      tab.classList.add('active');
+      $('code-' + ep.id).textContent = codeFor(ep, tab.dataset.lang);
+    }));
+  });
+  // 복사
+  document.querySelectorAll('.copy[data-copy]').forEach(btn => btn.addEventListener('click', () => {
+    const txt = $('code-' + btn.dataset.copy).textContent;
+    if (navigator.clipboard) navigator.clipboard.writeText(txt);
+    btn.textContent = '복사됨'; setTimeout(() => btn.textContent = '복사', 1200);
   }));
-  $('send').addEventListener('click', async () => {
-    const path = $('reqPath').value.trim();
-    $('reqStatus').textContent = '요청 중…';
+  // 호출 테스트(엔드포인트별)
+  document.querySelectorAll('.tryGo').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.dataset.ep;
+    const path = document.querySelector(`.tryInput[data-ep="${id}"]`).value.trim();
+    const st = $('st-' + id), rp = $('rp-' + id);
+    st.textContent = '요청 중…';
     const t0 = performance.now();
     try {
       const r = await fetch(api(path));
       const txt = await r.text();
       let body; try { body = JSON.stringify(JSON.parse(txt), null, 2); } catch { body = txt; }
-      $('reqStatus').textContent = `HTTP ${r.status} · ${Math.round(performance.now() - t0)}ms`;
-      $('reqResp').textContent = body;
-    } catch (err) { $('reqStatus').textContent = '오류'; $('reqResp').textContent = String(err); }
-  });
-
-  // ── 문서: 예제 코드 ──
-  const example = "/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2";
-  const codes = {
-    curl: `curl "${API_BASE}${example}"`,
-    js: `const res = await fetch(\n  "${API_BASE}${example}"\n);\nconst data = await res.json();\nconsole.log(data.options); // [추천, 대안...]`,
-    py: `import requests\nr = requests.get("${API_BASE}/api/plan/coords", params={\n    "fromLat": 37.5665, "fromLon": 126.9780,\n    "toLat": 37.4979, "toLon": 127.0276,\n    "time": "09:00", "alternatives": 2,\n})\nfor o in r.json()["options"]:\n    print(o["tag"], o["durationMin"], "분", o["transfers"], "환승")`,
-  };
-  function setCode(lang) { $('codeText').textContent = codes[lang]; }
-  document.querySelectorAll('.codeTab').forEach(t => t.addEventListener('click', () => {
-    document.querySelectorAll('.codeTab').forEach(x => x.classList.remove('active'));
-    t.classList.add('active'); setCode(t.dataset.lang);
+      st.textContent = `HTTP ${r.status} · ${Math.round(performance.now() - t0)}ms`;
+      rp.textContent = body;
+    } catch (err) { st.textContent = '오류'; rp.textContent = String(err); }
   }));
-  setCode('curl');
-  $('copyBtn').addEventListener('click', () => { navigator.clipboard && navigator.clipboard.writeText($('codeText').textContent); $('copyBtn').textContent = '복사됨'; setTimeout(() => $('copyBtn').textContent = '복사', 1200); });
 
-  // ── 문서: 네비 스크롤스파이 ──
+  // ── 문서: 네비 자동 생성(섹션 기준) + 스크롤스파이 ──
+  const secs = [...document.querySelectorAll('#docsMain section')];
+  $('docsNav').innerHTML = secs.map(s => {
+    const label = ENDPOINTS.find(e => 'sec-' + e.id === s.id)?.navLabel
+      || s.querySelector('h2').textContent.replace(/^GET\s*/, '').trim();
+    return `<a href="#${s.id}">${label}</a>`;
+  }).join('');
   const navLinks = [...document.querySelectorAll('#docsNav a')];
   const spy = new IntersectionObserver((entries) => {
     entries.forEach(e => {
-      if (e.isIntersecting) {
-        navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id));
-      }
+      if (e.isIntersecting) navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id));
     });
   }, { rootMargin: '-73px 0px -70% 0px' });
-  document.querySelectorAll('#docsMain section').forEach(s => spy.observe(s));
+  secs.forEach(s => spy.observe(s));
 </script>
 </body>
 </html>
