@@ -31,18 +31,31 @@ public class GtfsLoader {
     private static final DateTimeFormatter GTFS_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final String gtfsPath;
+    private final String binPath;
     private volatile GtfsFeed feed = GtfsFeed.empty();
 
-    public GtfsLoader(@Value("${daero.gtfs.path:}") String gtfsPath) {
+    public GtfsLoader(@Value("${daero.gtfs.path:}") String gtfsPath,
+                      @Value("${daero.timetable.bin:}") String binPath) {
         this.gtfsPath = gtfsPath;
+        this.binPath = binPath;
     }
 
     public GtfsFeed getFeed() {
         return feed;
     }
 
+    /** 빌드 후 원본 피드를 해제해 상주 메모리를 낮춘다(라우팅엔 Timetable만 필요). */
+    public void releaseFeed() {
+        this.feed = GtfsFeed.empty();
+    }
+
     @PostConstruct
     public void loadOnStartup() {
+        // prebuild 스냅샷이 있으면 GTFS 파싱 자체를 건너뛴다(기동 메모리 피크 회피).
+        if (binPath != null && !binPath.isBlank() && Files.exists(Paths.get(binPath))) {
+            log.info("[gtfs] prebuilt timetable({}) 존재 → GTFS 로딩 스킵", binPath);
+            return;
+        }
         if (gtfsPath == null || gtfsPath.isBlank()) {
             log.warn("[gtfs] daero.gtfs.path 미설정 → 빈 피드로 기동");
             return;

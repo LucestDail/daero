@@ -25,6 +25,16 @@ public class GtfsController {
     public Map<String, Object> stats() {
         GtfsFeed f = loader.getFeed();
         Map<String, Object> m = new LinkedHashMap<>();
+        // 원본 피드가 해제(빌드 후)되었거나 스냅샷 로드 모드면, Timetable 기준으로 응답.
+        if (f.isEmpty() && builder.getTimetable() != null) {
+            Timetable t = builder.getTimetable();
+            m.put("loaded", true);
+            m.put("mode", "prebuilt/released");
+            m.put("stops", t.nStops);
+            m.put("patterns", t.nPatterns);
+            m.put("note", "원본 피드 해제됨 — routes/trips/stopTimes 카운트는 /api/gtfs/timetable 참조");
+            return m;
+        }
         m.put("loaded", !f.isEmpty());
         m.put("stops", f.stops().size());
         m.put("routes", f.routes().size());

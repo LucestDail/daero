@@ -31,11 +31,14 @@ public class TimetableBuilder {
     private static final int MAX_TRANSFERS_PER_STOP = 16;
 
     private final GtfsLoader loader;
+    private final String binPath;
     private volatile Timetable timetable;
     private volatile long buildMs = -1;
 
-    public TimetableBuilder(GtfsLoader loader) {
+    public TimetableBuilder(GtfsLoader loader,
+                            @org.springframework.beans.factory.annotation.Value("${daero.timetable.bin:}") String binPath) {
         this.loader = loader;
+        this.binPath = binPath;
     }
 
     public Timetable getTimetable() { return timetable; }
@@ -44,6 +47,22 @@ public class TimetableBuilder {
     @EventListener(ApplicationReadyEvent.class)
     @Order(100)
     public void build() {
+        java.nio.file.Path bin = (binPath != null && !binPath.isBlank()) ? java.nio.file.Paths.get(binPath) : null;
+
+        // 1) prebuild 스냅샷이 있으면 로드만(저메모리·고속 기동).
+        if (bin != null && java.nio.file.Files.exists(bin)) {
+            try {
+                long t = System.currentTimeMillis();
+                this.timetable = TimetableIO.load(bin);
+                this.buildMs = System.currentTimeMillis() - t;
+                log.info("[timetable] prebuilt 스냅샷 로드 완료 ({}ms): {} patterns={}, stops={}",
+                        buildMs, bin, timetable.nPatterns, timetable.nStops);
+                return;
+            } catch (Exception e) {
+                log.error("[timetable] 스냅샷 로드 실패 → GTFS 빌드로 폴백: {}", e.getMessage());
+            }
+        }
+
         GtfsFeed feed = loader.getFeed();
         if (feed == null || feed.isEmpty()) {
             log.warn("[timetable] GTFS 비어있음 → 빌드 스킵");
@@ -187,6 +206,19 @@ public class TimetableBuilder {
         this.buildMs = System.currentTimeMillis() - t0;
         log.info("[timetable] 빌드 완료 ({}ms): patterns={}, 정차엔트리={}, 환승={}",
                 buildMs, nPatterns, totalTimes, tf[1].length);
+
+        // 2) prebuild 스냅샷 저장(다음 기동부터 이 파일만 로드 → 저메모리).
+        if (bin != null) {
+            try {
+                TimetableIO.save(this.timetable, bin);
+                log.info("[timetable] 스냅샷 저장 완료: {} (다음 기동부터 GTFS 없이 로드)", bin);
+            } catch (Exception e) {
+                log.warn("[timetable] 스냅샷 저장 실패(무시): {}", e.getMessage());
+            }
+        }
+        // 3) 원본 GtfsFeed 해제 → 상주 메모리 절감(라우팅엔 Timetable만 필요).
+        loader.releaseFeed();
+        System.gc();
     }
 
     private int modeOf(GtfsFeed feed, String tripId) {
