@@ -1,0 +1,10 @@
+target/
+*.class
+.idea/
+*.iml
+.vscode/
+.DS_Store
+*.log
+
+# GTFS 원본 데이터(대용량) — 저장소에 커밋하지 않음
+/data/
