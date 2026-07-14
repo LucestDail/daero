@@ -86,6 +86,27 @@
     #privacyView h2 { font-size: 22px; margin: 0 0 4px; }
     #privacyView h3 { font-size: 15px; margin: 22px 0 6px; }
     #privacyView p, #privacyView li { color: #374151; font-size: 14px; line-height: 1.7; }
+
+    /* 모바일: 지도 위 / 패널 아래로 세로 스택, 문서 네비 상단 가로 */
+    @media (max-width: 768px) {
+      header { flex-wrap: wrap; height: auto; gap: 8px 12px; padding: 8px 12px; }
+      header .sub { display: none; }
+      .tabs { margin-left: auto; }
+      .tab { padding: 6px 10px; font-size: 13px; }
+
+      #mapView { height: auto; }
+      #app { flex-direction: column; height: auto; }
+      #map { width: 100%; height: 55vh; flex: none; }
+      #panel { width: 100%; border-left: none; border-top: 1px solid #e5e7eb; max-height: none; }
+
+      #docsView { flex-direction: column; gap: 12px; padding: 16px 14px 80px; }
+      #docsNav { position: static; width: 100%; max-height: none; display: flex; flex-wrap: wrap; gap: 4px;
+                 border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
+      #docsNav a { border-left: none; padding: 4px 8px; }
+      #docsNav a.active { border-left: none; text-decoration: underline; }
+      .console input[type=text], .tryInput { min-width: 0; }
+      table { font-size: 12px; }
+    }
   </style>
 </head>
 <body>
@@ -283,6 +304,8 @@
   // ── 지도 ──
   const map = L.map('map').setView([37.5665, 126.9780], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+  window.addEventListener('resize', () => map.invalidateSize());
+  window.addEventListener('orientationchange', () => setTimeout(() => map.invalidateSize(), 200));
   let origin = null, dest = null, oMarker = null, dMarker = null, routeLayer = null, nodeLayer = null, options = [];
   const modeKo = { BUS: '버스', SUBWAY: '지하철', RAIL: '기차', AIR: '항공', FERRY: '여객선', WALK: '도보' };
   const modeColor = { BUS: '#2563eb', SUBWAY: '#059669', RAIL: '#7c3aed', AIR: '#0891b2', FERRY: '#0d9488', WALK: '#9ca3af' };
