@@ -66,7 +66,8 @@ Base URL: `http://<host>:8090`  ·  인증: **없음(공개)**  ·  응답: `app
 Java 17 · Spring Boot 3.2 (Maven) · Leaflet(정적 페이지, 빌드 없음). 설계·진행: [`PLAN.md`](./PLAN.md).
 
 ## 라이선스
-미정 (AGPL-3.0 또는 MIT 검토 중).
+**듀얼 라이선스** — 오픈소스는 **AGPL-3.0**([`LICENSE`](./LICENSE)), 상용은 별도 계약.
+자세한 내용: [`LICENSING.md`](./LICENSING.md). (AGPL: 네트워크 서비스로 제공 시 소스 공개 의무)
 
 ## 데이터·지도 출처 표기
 - 지도 타일: © OpenStreetMap 기여자.

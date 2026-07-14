@@ -45,7 +45,8 @@
     <div class="hint">지도를 클릭해 <b>출발</b>(파랑)과 <b>도착</b>(빨강)을 찍으세요.</div>
     <div class="row"><span class="dot o"></span><span class="coord" id="oText">출발 미지정</span></div>
     <div class="row"><span class="dot d"></span><span class="coord" id="dText">도착 미지정</span></div>
-    <div class="row"><label>출발 시각</label><input type="time" id="time" value="09:00"/></div>
+    <div class="row"><label>출발 시각</label><input type="time" id="time" value="09:00"/>
+      <label>대안 수</label><input type="number" id="alts" value="1" min="0" max="10" style="width:56px;padding:4px 6px"/></div>
     <button id="go" disabled>경로 찾기</button>
     <div id="result"></div>
   </div>
@@ -88,7 +89,8 @@
     $('go').disabled = true; $('go').textContent = '탐색 중…';
     try {
       const t = $('time').value || '09:00';
-      const url = `/api/plan/coords?fromLat=${origin.lat}&fromLon=${origin.lng}&toLat=${dest.lat}&toLon=${dest.lng}&time=${t}`;
+      const alts = $('alts').value || '1';
+      const url = `/api/plan/coords?fromLat=${origin.lat}&fromLon=${origin.lng}&toLat=${dest.lat}&toLon=${dest.lng}&time=${t}&alternatives=${alts}`;
       const r = await fetch(url);
       const d = await r.json();
       render(d);

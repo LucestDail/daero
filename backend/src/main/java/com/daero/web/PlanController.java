@@ -60,7 +60,8 @@ public class PlanController {
     /** 정류장ID → 정류장ID. */
     @GetMapping
     public ResponseEntity<?> plan(@RequestParam String fromStop, @RequestParam String toStop,
-                                  @RequestParam(defaultValue = "08:00") String time) {
+                                  @RequestParam(defaultValue = "08:00") String time,
+                                  @RequestParam(defaultValue = "1") int alternatives) {
         Timetable tt = builder.getTimetable();
         if (tt == null) return ResponseEntity.status(503).body(Map.of("error", "timetable not built"));
         Integer src = tt.stopIndex.get(fromStop), dst = tt.stopIndex.get(toStop);
@@ -71,14 +72,15 @@ public class PlanController {
         int[] s1 = {src}, z = {0}, d1 = {dst};
         List<RaptorRouter.Result> normal = router.journeys(s1, z, d1, z, departSec, false);
         List<RaptorRouter.Result> rail = router.journeys(s1, z, d1, z, departSec, true);
-        return ResponseEntity.ok(renderTagged(tt, normal, rail, departSec, (System.nanoTime() - t0) / 1_000_000));
+        return ResponseEntity.ok(renderTagged(tt, normal, rail, departSec, clampAlts(alternatives), (System.nanoTime() - t0) / 1_000_000));
     }
 
     /** 좌표 → 좌표 door-to-door(접근·하차 도보 포함). */
     @GetMapping("/coords")
     public ResponseEntity<?> coords(@RequestParam double fromLat, @RequestParam double fromLon,
                                     @RequestParam double toLat, @RequestParam double toLon,
-                                    @RequestParam(defaultValue = "08:00") String time) {
+                                    @RequestParam(defaultValue = "08:00") String time,
+                                    @RequestParam(defaultValue = "1") int alternatives) {
         Timetable tt = builder.getTimetable();
         if (tt == null) return ResponseEntity.status(503).body(Map.of("error", "timetable not built"));
         List<int[]> src = topAccess(tt.nearestStops(fromLat, fromLon, ACCESS_RADIUS_M, WALK_SPEED));
@@ -95,44 +97,60 @@ public class PlanController {
         long t0 = System.nanoTime();
         List<RaptorRouter.Result> normal = router.journeys(ss, sa, ds, de, departSec, false);
         List<RaptorRouter.Result> rail = router.journeys(ss, sa, ds, de, departSec, true);
-        Map<String, Object> m = renderTagged(tt, normal, rail, departSec, (System.nanoTime() - t0) / 1_000_000);
+        Map<String, Object> m = renderTagged(tt, normal, rail, departSec, clampAlts(alternatives), (System.nanoTime() - t0) / 1_000_000);
         m.put("accessStops", src.size());
         m.put("egressStops", dst.size());
         return ResponseEntity.ok(m);
     }
 
     // ── 렌더링/유틸 ─────────────────────────────────────────
+    private int clampAlts(int n) {
+        return Math.max(0, Math.min(10, n));
+    }
+
     /**
-     * 태그된 경로 옵션 구성: 추천(환승 페널티 최소) + 지하철·철도 우선(rail) + 최소환승/빠른 대안.
-     * normal/rail 은 각각 도착 이른 순 파레토.
+     * 태그된 경로 옵션 구성. 항상 추천 1개 + 대안 최대 maxAlts 개(기본 1, 최대 10).
+     * 우선순위: 추천(환승 페널티 최소) → 지하철·철도 우선 → 환승 최소 → 나머지 파레토(빠름 순).
      */
     private Map<String, Object> renderTagged(Timetable tt, List<RaptorRouter.Result> normal,
-                                             List<RaptorRouter.Result> rail, int departSec, long queryMs) {
+                                             List<RaptorRouter.Result> rail, int departSec,
+                                             int maxAlts, long queryMs) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("queryMs", queryMs);
         if (normal.isEmpty()) { m.put("found", false); return m; }
 
         RaptorRouter.Result primary = minScore(normal);
         List<Map<String, Object>> opts = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
         opts.add(oneJourney(tt, primary, departSec, "추천"));
+        seen.add(key(primary));
 
-        // 지하철·철도 우선: rail 파레토 중 최소환승·빠름, 실제 지하철/철도 포함 + 추천과 다를 때
+        // 후보를 우선순위대로 모아 중복 제거하며 maxAlts 까지 대안 추가
+        List<Object[]> cands = new ArrayList<>(); // [Result, tag]
         RaptorRouter.Result railBest = rail.isEmpty() ? null : minScore(rail);
-        if (railBest != null && usesRail(railBest) && !sameJourney(railBest, primary)) {
-            opts.add(oneJourney(tt, railBest, departSec, "지하철·철도 우선"));
-        }
-        // 최소 환승 대안(파레토 첫 항목 = 환승 최소) 이 추천과 다르면
-        RaptorRouter.Result fewest = normal.get(0);
-        if (!sameJourney(fewest, primary) && opts.size() < 3
-                && opts.stream().noneMatch(o -> ((int) o.get("transfers")) == fewest.transfers()
-                    && o.get("arrival").equals(fmt(fewest.arrivalSec())))) {
-            opts.add(oneJourney(tt, fewest, departSec, "환승 최소"));
+        if (railBest != null && usesRail(railBest)) cands.add(new Object[]{railBest, "지하철·철도 우선"});
+        if (!normal.isEmpty()) cands.add(new Object[]{normal.get(0), "환승 최소"}); // 파레토 첫=환승 최소
+        for (int i = normal.size() - 1; i >= 0; i--) cands.add(new Object[]{normal.get(i), "대안"}); // 빠른 순
+        for (RaptorRouter.Result r : rail) cands.add(new Object[]{r, "철도 대안"});
+
+        for (Object[] c : cands) {
+            if (opts.size() - 1 >= maxAlts) break;
+            RaptorRouter.Result r = (RaptorRouter.Result) c[0];
+            String tag = (String) c[1];
+            if (seen.add(key(r))) opts.add(oneJourney(tt, r, departSec, tag));
         }
 
         m.put("found", true);
-        m.putAll(opts.get(0)); // 최상위(추천)을 루트에 펼침(하위호환)
-        m.put("options", opts);
+        m.putAll(opts.get(0));      // 추천을 루트에 펼침(하위호환)
+        m.put("options", opts);      // [추천, 대안...] 항상 최소 1개
         return m;
+    }
+
+    /** 여정 식별 키(도착·환승·첫 대중교통 노선) — 중복 제거용. */
+    private String key(RaptorRouter.Result r) {
+        String route = r.legs().stream().filter(l -> !"WALK".equals(l.mode()))
+                .map(RaptorRouter.Leg::routeName).findFirst().orElse("");
+        return r.arrivalSec() + "|" + r.transfers() + "|" + route;
     }
 
     private RaptorRouter.Result minScore(List<RaptorRouter.Result> js) {
@@ -147,10 +165,6 @@ public class PlanController {
 
     private boolean usesRail(RaptorRouter.Result r) {
         return r.legs().stream().anyMatch(l -> "SUBWAY".equals(l.mode()) || "RAIL".equals(l.mode()));
-    }
-
-    private boolean sameJourney(RaptorRouter.Result a, RaptorRouter.Result b) {
-        return a.arrivalSec() == b.arrivalSec() && a.transfers() == b.transfers();
     }
 
     private Map<String, Object> oneJourney(Timetable tt, RaptorRouter.Result r, int departSec, String tag) {
