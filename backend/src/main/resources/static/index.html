@@ -8,7 +8,8 @@
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif; color: #111827; }
-    header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #e5e7eb; }
+    header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #e5e7eb;
+             position: sticky; top: 0; background: #fff; z-index: 500; height: 57px; }
     header h1 { font-size: 18px; margin: 0; }
     header .sub { color: #6b7280; font-size: 12px; }
     .tabs { margin-left: auto; display: flex; gap: 4px; }
@@ -42,21 +43,31 @@
     .BUS { background: #2563eb; } .SUBWAY { background: #059669; } .RAIL { background: #7c3aed; }
     .AIR { background: #0891b2; } .FERRY { background: #0d9488; } .WALK { background: #9ca3af; }
 
-    /* 문서 뷰 */
-    #docsView { max-width: 900px; margin: 0 auto; padding: 24px 20px 80px; }
-    #docsView h2 { font-size: 20px; margin: 28px 0 8px; }
-    #docsView h3 { font-size: 15px; margin: 20px 0 6px; font-family: ui-monospace, monospace; }
-    #docsView p { color: #374151; font-size: 14px; line-height: 1.6; }
-    table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0; }
-    th, td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; }
+    /* 문서 뷰: 좌측 플로팅 네비 + 본문 */
+    #docsView { display: flex; gap: 36px; max-width: 1160px; margin: 0 auto; padding: 24px 20px 120px; align-items: flex-start; }
+    #docsNav { position: sticky; top: 73px; width: 210px; flex: none; font-size: 13px; max-height: calc(100vh - 90px); overflow-y: auto; }
+    #docsNav .navGroup { color: #9ca3af; font-size: 11px; text-transform: uppercase; margin: 14px 0 4px; letter-spacing: .04em; }
+    #docsNav a { display: block; padding: 5px 10px; color: #6b7280; text-decoration: none; border-radius: 6px; border-left: 2px solid transparent; }
+    #docsNav a:hover { color: #111827; background: #f9fafb; }
+    #docsNav a.active { color: #111827; background: #f3f4f6; border-left-color: #111827; font-weight: 600; }
+    #docsMain { flex: 1; min-width: 0; }
+    #docsMain section { scroll-margin-top: 73px; padding-bottom: 8px; }
+    #docsMain h2 { font-size: 20px; margin: 32px 0 8px; }
+    #docsMain h2:first-child { margin-top: 0; }
+    .ep { font-family: ui-monospace, monospace; font-size: 15px; background: #f3f4f6; padding: 6px 10px; border-radius: 8px; display: inline-block; }
+    .method { color: #059669; font-weight: 700; }
+    #docsMain p { color: #374151; font-size: 14px; line-height: 1.6; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 10px 0; }
+    th, td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; vertical-align: top; }
     th { background: #f9fafb; }
+    .req { color: #dc2626; font-weight: 700; } .opt2 { color: #9ca3af; }
     code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
     pre { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 10px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; position: relative; white-space: pre-wrap; word-break: break-all; }
     pre code { background: transparent; color: #e2e8f0; padding: 0; border-radius: 0; }
-    .copy { position: absolute; top: 8px; right: 8px; background: #334155; padding: 3px 8px; font-size: 11px; border-radius: 6px; }
+    .copy { position: absolute; top: 8px; right: 8px; background: #334155; color: #fff; padding: 3px 8px; font-size: 11px; border-radius: 6px; cursor: pointer; }
+    .tryBtn { background: #eef2ff; color: #3730a3; padding: 5px 10px; font-size: 12px; margin-top: 4px; }
     .console { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; background: #fafafa; margin: 10px 0; }
-    .console .row { margin-bottom: 8px; }
-    .console input[type=text] { flex: 1; min-width: 300px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 12.5px; }
+    .console input[type=text] { flex: 1; min-width: 280px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 12.5px; }
     .preset { background: #e5e7eb; color: #111827; padding: 5px 10px; font-size: 12px; }
     .codeTabs { display: flex; gap: 4px; margin-top: 6px; }
     .codeTab { padding: 5px 12px; border-radius: 7px; background: #f3f4f6; cursor: pointer; font-size: 12px; }
@@ -91,70 +102,168 @@
 
 <!-- API 문서 뷰 -->
 <div id="docsView" class="view">
-  <h2>개요</h2>
-  <p>daero 는 GTFS 기반 국내 대중교통 door-to-door 경로탐색 API 입니다.
-     <b>인증(API 키) 불필요</b>, 응답은 <code>application/json; UTF-8</code>.
-     Base URL: <code id="baseUrl">http://localhost:8090</code></p>
+  <nav id="docsNav">
+    <div class="navGroup">시작</div>
+    <a href="#sec-overview">개요</a>
+    <a href="#sec-console">직접 호출해보기</a>
+    <div class="navGroup">엔드포인트</div>
+    <a href="#sec-coords">plan/coords (좌표)</a>
+    <a href="#sec-plan">plan (정류장ID)</a>
+    <a href="#sec-search">plan/search</a>
+    <a href="#sec-near">plan/near</a>
+    <a href="#sec-gtfs">gtfs/stats·timetable</a>
+    <div class="navGroup">참고</div>
+    <a href="#sec-response">응답 스키마</a>
+    <a href="#sec-examples">예제 코드</a>
+    <a href="#sec-notes">주의·한계</a>
+  </nav>
 
-  <h2>직접 호출해보기</h2>
-  <div class="console">
-    <div class="row">
-      <button class="preset" data-q="/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2">예: 시청→강남</button>
-      <button class="preset" data-q="/api/plan/coords?fromLat=37.5563&fromLon=126.9723&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=3">예: 서울역→강남(대안3)</button>
-      <button class="preset" data-q="/api/plan/search?q=서울역&limit=5">예: 정류장 검색</button>
-    </div>
-    <div class="row">
-      <input type="text" id="reqPath" value="/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2"/>
-      <button id="send">보내기</button>
-    </div>
-    <div class="times" id="reqStatus"></div>
-    <pre id="reqResp" style="max-height:340px; overflow:auto">응답이 여기에 표시됩니다.</pre>
-  </div>
+  <div id="docsMain">
+    <section id="sec-overview">
+      <h2>개요</h2>
+      <p>daero 는 GTFS 기반 국내 대중교통 door-to-door 경로탐색 API 입니다.
+         <b>인증(API 키) 불필요</b>. 모든 응답은 <code>application/json; charset=UTF-8</code>.
+         CORS 전체 허용(<code>*</code>).</p>
+      <table>
+        <tr><th>Base URL</th><td><code id="baseUrl">http://localhost:8090</code></td></tr>
+        <tr><th>인증</th><td>없음 (공개)</td></tr>
+        <tr><th>메서드</th><td>GET</td></tr>
+        <tr><th>시각 형식</th><td><code>HH:MM</code> 또는 <code>HH:MM:SS</code> (자정 기준, 24시 초과 = 심야)</td></tr>
+      </table>
+    </section>
 
-  <h2>엔드포인트</h2>
+    <section id="sec-console">
+      <h2>직접 호출해보기</h2>
+      <p>아래에 경로를 넣고 <b>보내기</b>를 누르면 실제 응답이 표시됩니다. 프리셋으로 채워볼 수 있어요.</p>
+      <div class="console">
+        <div class="row">
+          <button class="preset" data-q="/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2">시청→강남</button>
+          <button class="preset" data-q="/api/plan/coords?fromLat=37.5563&fromLon=126.9723&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=3">서울역→강남(대안3)</button>
+          <button class="preset" data-q="/api/plan/search?q=서울역&limit=5">정류장 검색</button>
+          <button class="preset" data-q="/api/gtfs/stats">gtfs/stats</button>
+        </div>
+        <div class="row">
+          <input type="text" id="reqPath" value="/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2"/>
+          <button id="send">보내기</button>
+        </div>
+        <div class="times" id="reqStatus"></div>
+        <pre id="reqResp" style="max-height:360px; overflow:auto">응답이 여기에 표시됩니다.</pre>
+      </div>
+    </section>
 
-  <h3>GET /api/plan/coords</h3>
-  <p>좌표 door-to-door 경로. 추천 + 대안 경로 반환.</p>
-  <table>
-    <tr><th>파라미터</th><th>타입</th><th>설명</th></tr>
-    <tr><td>fromLat, fromLon</td><td>double</td><td>출발 좌표</td></tr>
-    <tr><td>toLat, toLon</td><td>double</td><td>도착 좌표</td></tr>
-    <tr><td>time</td><td>string</td><td>출발 시각 HH:MM (기본 08:00)</td></tr>
-    <tr><td>alternatives</td><td>int</td><td>대안 경로 수 0~10 (기본 1)</td></tr>
-  </table>
+    <section id="sec-coords">
+      <h2><span class="method">GET</span> /api/plan/coords</h2>
+      <p>출발·도착 <b>좌표</b> 간 door-to-door 경로. 근처 정류장까지 도보 접근 → 대중교통 → 하차 도보를 포함하며,
+         추천 경로와 대안 경로들을 함께 반환합니다.</p>
+      <table>
+        <tr><th>파라미터</th><th>필수</th><th>타입</th><th>기본</th><th>설명</th></tr>
+        <tr><td>fromLat</td><td class="req">필수</td><td>double</td><td>—</td><td>출발 위도</td></tr>
+        <tr><td>fromLon</td><td class="req">필수</td><td>double</td><td>—</td><td>출발 경도</td></tr>
+        <tr><td>toLat</td><td class="req">필수</td><td>double</td><td>—</td><td>도착 위도</td></tr>
+        <tr><td>toLon</td><td class="req">필수</td><td>double</td><td>—</td><td>도착 경도</td></tr>
+        <tr><td>time</td><td class="opt2">선택</td><td>string</td><td>08:00</td><td>출발 시각 <code>HH:MM</code></td></tr>
+        <tr><td>alternatives</td><td class="opt2">선택</td><td>int</td><td>1</td><td>대안 경로 수 (0~10). 응답 <code>options</code> = 추천 1 + 대안 N</td></tr>
+      </table>
+      <p>예시 요청:</p>
+      <pre><code>GET /api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2</code></pre>
+      <button class="tryBtn" data-q="/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2">이 요청 콘솔에서 보내기 ↑</button>
+    </section>
 
-  <h3>GET /api/plan</h3>
-  <p>정류장 ID 간 경로. 파라미터: <code>fromStop</code>, <code>toStop</code>, <code>time</code>, <code>alternatives</code>.</p>
+    <section id="sec-plan">
+      <h2><span class="method">GET</span> /api/plan</h2>
+      <p><b>정류장 ID</b> 간 경로. 좌표 대신 정류장 ID를 직접 지정할 때 사용(<code>/api/plan/search</code> 로 ID 조회).</p>
+      <table>
+        <tr><th>파라미터</th><th>필수</th><th>타입</th><th>기본</th><th>설명</th></tr>
+        <tr><td>fromStop</td><td class="req">필수</td><td>string</td><td>—</td><td>출발 정류장 ID</td></tr>
+        <tr><td>toStop</td><td class="req">필수</td><td>string</td><td>—</td><td>도착 정류장 ID</td></tr>
+        <tr><td>time</td><td class="opt2">선택</td><td>string</td><td>08:00</td><td>출발 시각 <code>HH:MM</code></td></tr>
+        <tr><td>alternatives</td><td class="opt2">선택</td><td>int</td><td>1</td><td>대안 경로 수 (0~10)</td></tr>
+      </table>
+      <pre><code>GET /api/plan?fromStop=RS_ACC1_S-1-0150&toStop=RS_ACC1_S-1-0222&time=09:00</code></pre>
+    </section>
 
-  <h3>GET /api/plan/search?q=이름&limit=20</h3>
-  <p>이름으로 정류장 검색(정류장 ID·좌표 반환).</p>
+    <section id="sec-search">
+      <h2><span class="method">GET</span> /api/plan/search</h2>
+      <p>이름으로 정류장 검색. 정류장 ID·좌표를 반환합니다.</p>
+      <table>
+        <tr><th>파라미터</th><th>필수</th><th>타입</th><th>기본</th><th>설명</th></tr>
+        <tr><td>q</td><td class="req">필수</td><td>string</td><td>—</td><td>정류장 이름(부분 일치)</td></tr>
+        <tr><td>limit</td><td class="opt2">선택</td><td>int</td><td>20</td><td>최대 결과 수</td></tr>
+      </table>
+      <pre><code>GET /api/plan/search?q=서울역&limit=5
+→ [ { "stopId": "...", "name": "서울역", "lat": 37.55, "lon": 126.97 }, ... ]</code></pre>
+    </section>
 
-  <h3>GET /api/plan/near?lat=&lon=&radius=800</h3>
-  <p>좌표 근처 정류장(모드 접두어 포함).</p>
+    <section id="sec-near">
+      <h2><span class="method">GET</span> /api/plan/near</h2>
+      <p>좌표 근처 정류장을 도보 거리와 함께 반환(모드 접두어 포함 — <code>BS</code>버스·<code>RS</code>철도/지하철 등).</p>
+      <table>
+        <tr><th>파라미터</th><th>필수</th><th>타입</th><th>기본</th><th>설명</th></tr>
+        <tr><td>lat, lon</td><td class="req">필수</td><td>double</td><td>—</td><td>기준 좌표</td></tr>
+        <tr><td>radius</td><td class="opt2">선택</td><td>double</td><td>800</td><td>반경(m)</td></tr>
+      </table>
+      <pre><code>GET /api/plan/near?lat=37.5665&lon=126.978&radius=800
+→ [ { "stopId": "...", "prefix": "BS", "name": "...", "walkSec": 120 }, ... ]</code></pre>
+    </section>
 
-  <h3>GET /api/gtfs/stats · /api/gtfs/timetable</h3>
-  <p>적재된 데이터·빌드 상태.</p>
+    <section id="sec-gtfs">
+      <h2><span class="method">GET</span> /api/gtfs/stats · /api/gtfs/timetable</h2>
+      <p>적재된 GTFS 카운트(<code>stats</code>)와 빌드된 경로 자료구조 상태(<code>timetable</code>, 모드별 패턴 포함). 헬스체크·검증용.</p>
+      <pre><code>GET /api/gtfs/stats     → { "loaded": true, "stops": 220577, "routes": 30895, ... }
+GET /api/gtfs/timetable → { "built": true, "patterns": 33071, "patternsByMode": {...} }</code></pre>
+    </section>
 
-  <h2>응답 예시 (일부)</h2>
-  <pre>{
+    <section id="sec-response">
+      <h2>응답 스키마 (경로 API 공통)</h2>
+      <p>최상위에는 추천 경로가 펼쳐지고(하위호환), <code>options</code> 배열에 [추천, 대안...]이 담깁니다.</p>
+      <table>
+        <tr><th>필드</th><th>타입</th><th>설명</th></tr>
+        <tr><td>found</td><td>boolean</td><td>경로 발견 여부</td></tr>
+        <tr><td>queryMs</td><td>int</td><td>탐색 소요(ms)</td></tr>
+        <tr><td>options[]</td><td>array</td><td>경로 옵션 목록(추천 + 대안)</td></tr>
+        <tr><td>options[].tag</td><td>string</td><td>추천 / 지하철·철도 우선 / 환승 최소 / 대안 …</td></tr>
+        <tr><td>options[].departure, arrival</td><td>string</td><td>출발·도착 시각 <code>HH:MM</code></td></tr>
+        <tr><td>options[].durationMin</td><td>int</td><td>총 소요(분)</td></tr>
+        <tr><td>options[].transfers</td><td>int</td><td>환승 횟수</td></tr>
+        <tr><td>options[].estimatedFareKrw</td><td>int</td><td>예상 요금(원, 도시 통합요금 근사)</td></tr>
+        <tr><td>options[].modes[]</td><td>string[]</td><td>사용 교통수단</td></tr>
+        <tr><td>options[].legs[]</td><td>array</td><td>구간 목록</td></tr>
+        <tr><td>legs[].mode</td><td>string</td><td><code>BUS·SUBWAY·RAIL·AIR·FERRY·WALK</code></td></tr>
+        <tr><td>legs[].route</td><td>string</td><td>노선명(도보 제외)</td></tr>
+        <tr><td>legs[].from, to</td><td>string</td><td>승·하차 정류장명</td></tr>
+        <tr><td>legs[].depart, arrive</td><td>string</td><td>구간 출발·도착 시각</td></tr>
+        <tr><td>legs[].min</td><td>int</td><td>구간 소요(분)</td></tr>
+        <tr><td>legs[].fromLat/fromLon/toLat/toLon</td><td>double</td><td>구간 양끝 좌표(경로선용)</td></tr>
+      </table>
+      <pre>{
   "found": true, "queryMs": 140,
   "tag": "추천", "departure": "09:00", "arrival": "09:29",
-  "durationMin": 29, "transfers": 1, "estimatedFareKrw": 1350,
-  "modes": ["BUS"],
-  "legs": [ { "mode":"BUS","route":"262","from":"서울역","to":"종로2가",
-             "depart":"09:01","arrive":"09:07","min":6,
-             "fromLat":37.55,"fromLon":126.97,"toLat":37.57,"toLon":126.98 } ],
-  "options": [ /* 추천 / 지하철·철도 우선 / 환승 최소 ... */ ]
-}
-mode: BUS | SUBWAY | RAIL | AIR | FERRY | WALK</pre>
+  "durationMin": 29, "transfers": 1, "estimatedFareKrw": 1350, "modes": ["BUS"],
+  "legs": [ { "mode": "BUS", "route": "262", "from": "서울역", "to": "종로2가",
+              "depart": "09:01", "arrive": "09:07", "min": 6,
+              "fromLat": 37.55, "fromLon": 126.97, "toLat": 37.57, "toLon": 126.98 } ],
+  "options": [ /* {tag:"추천",...}, {tag:"지하철·철도 우선",...}, {tag:"환승 최소",...} */ ]
+}</pre>
+    </section>
 
-  <h2>예제 코드</h2>
-  <div class="codeTabs">
-    <div class="codeTab active" data-lang="curl">curl</div>
-    <div class="codeTab" data-lang="js">JavaScript</div>
-    <div class="codeTab" data-lang="py">Python</div>
+    <section id="sec-examples">
+      <h2>예제 코드</h2>
+      <div class="codeTabs">
+        <div class="codeTab active" data-lang="curl">curl</div>
+        <div class="codeTab" data-lang="js">JavaScript</div>
+        <div class="codeTab" data-lang="py">Python</div>
+      </div>
+      <pre><span class="copy" id="copyBtn">복사</span><code id="codeText"></code></pre>
+    </section>
+
+    <section id="sec-notes">
+      <h2>주의 · 한계</h2>
+      <p>· 요금은 도시 통합요금 <b>근사치</b>(철도·항공 실요금 미반영).<br>
+         · 경로선 좌표는 정류장 직선 연결(정밀 선형 데이터 없음).<br>
+         · GTFS 스냅샷 기반(정적) — 실시간 지연 미반영, "예상 경로·소요시간" 용도.<br>
+         · 지도 타일 © OpenStreetMap, 대중교통 데이터는 각 제공처 이용조건을 따릅니다.</p>
+    </section>
   </div>
-  <pre id="codeBlock"><span class="copy" id="copyBtn">복사</span><code id="codeText"></code></pre>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -163,7 +272,6 @@ mode: BUS | SUBWAY | RAIL | AIR | FERRY | WALK</pre>
   const ORIGIN = window.location.origin;
   $('baseUrl').textContent = ORIGIN;
 
-  // ── 탭 전환 ──
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
@@ -174,10 +282,8 @@ mode: BUS | SUBWAY | RAIL | AIR | FERRY | WALK</pre>
 
   // ── 지도 ──
   const map = L.map('map').setView([37.5665, 126.9780], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
-  let origin = null, dest = null, oMarker = null, dMarker = null, routeLayer = null, nodeLayer = null;
-  let options = [];
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+  let origin = null, dest = null, oMarker = null, dMarker = null, routeLayer = null, nodeLayer = null, options = [];
   const modeKo = { BUS: '버스', SUBWAY: '지하철', RAIL: '기차', AIR: '항공', FERRY: '여객선', WALK: '도보' };
   const modeColor = { BUS: '#2563eb', SUBWAY: '#059669', RAIL: '#7c3aed', AIR: '#0891b2', FERRY: '#0d9488', WALK: '#9ca3af' };
 
@@ -199,7 +305,6 @@ mode: BUS | SUBWAY | RAIL | AIR | FERRY | WALK</pre>
     }
     $('go').disabled = !(origin && dest);
   });
-
   $('go').addEventListener('click', async () => {
     if (!origin || !dest) return;
     $('go').disabled = true; $('go').textContent = '탐색 중…';
@@ -210,10 +315,8 @@ mode: BUS | SUBWAY | RAIL | AIR | FERRY | WALK</pre>
     } catch (err) { $('result').innerHTML = `<div class="hint">오류: ${err}</div>`; }
     finally { $('go').disabled = false; $('go').textContent = '경로 찾기'; }
   });
-
   function render(d) {
-    if (routeLayer) map.removeLayer(routeLayer);
-    if (nodeLayer) map.removeLayer(nodeLayer);
+    if (routeLayer) map.removeLayer(routeLayer); if (nodeLayer) map.removeLayer(nodeLayer);
     if (!d.found || !(d.options && d.options.length)) { $('result').innerHTML = '<div class="hint">경로를 찾지 못했어요.</div>'; return; }
     options = d.options;
     let html = `<div class="times" style="margin:6px 0">${d.queryMs}ms · 경로 ${options.length}개</div>`;
@@ -232,8 +335,7 @@ mode: BUS | SUBWAY | RAIL | AIR | FERRY | WALK</pre>
       el.classList.toggle('sel', i === idx);
       el.querySelector('.legs').innerHTML = i === idx ? legHtml(options[i].legs) : '';
     });
-    if (routeLayer) map.removeLayer(routeLayer);
-    if (nodeLayer) map.removeLayer(nodeLayer);
+    if (routeLayer) map.removeLayer(routeLayer); if (nodeLayer) map.removeLayer(nodeLayer);
     nodeLayer = L.layerGroup().addTo(map);
     const o = options[idx], all = [[origin.lat, origin.lng]], segs = [];
     o.legs.forEach(l => {
@@ -260,8 +362,12 @@ mode: BUS | SUBWAY | RAIL | AIR | FERRY | WALK</pre>
     }).join('');
   }
 
-  // ── 문서: 호출 콘솔 ──
+  // ── 문서: 콘솔 ──
+  function fill(q) { $('reqPath').value = q; $('docsView').scrollIntoView; document.querySelector('a[href="#sec-console"]').click(); }
   document.querySelectorAll('.preset').forEach(b => b.addEventListener('click', () => { $('reqPath').value = b.dataset.q; }));
+  document.querySelectorAll('.tryBtn').forEach(b => b.addEventListener('click', () => {
+    $('reqPath').value = b.dataset.q; location.hash = '#sec-console'; $('send').click();
+  }));
   $('send').addEventListener('click', async () => {
     const path = $('reqPath').value.trim();
     $('reqStatus').textContent = '요청 중…';
@@ -279,8 +385,8 @@ mode: BUS | SUBWAY | RAIL | AIR | FERRY | WALK</pre>
   const example = "/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2";
   const codes = {
     curl: `curl "${ORIGIN}${example}"`,
-    js: `const res = await fetch(\n  "${ORIGIN}${example}"\n);\nconst data = await res.json();\nconsole.log(data.options); // 추천 + 대안 경로`,
-    py: `import requests\nr = requests.get("${ORIGIN}/api/plan/coords", params={\n    "fromLat": 37.5665, "fromLon": 126.9780,\n    "toLat": 37.4979, "toLon": 127.0276,\n    "time": "09:00", "alternatives": 2,\n})\nprint(r.json()["options"])`,
+    js: `const res = await fetch(\n  "${ORIGIN}${example}"\n);\nconst data = await res.json();\nconsole.log(data.options); // [추천, 대안...]`,
+    py: `import requests\nr = requests.get("${ORIGIN}/api/plan/coords", params={\n    "fromLat": 37.5665, "fromLon": 126.9780,\n    "toLat": 37.4979, "toLon": 127.0276,\n    "time": "09:00", "alternatives": 2,\n})\nfor o in r.json()["options"]:\n    print(o["tag"], o["durationMin"], "분", o["transfers"], "환승")`,
   };
   function setCode(lang) { $('codeText').textContent = codes[lang]; }
   document.querySelectorAll('.codeTab').forEach(t => t.addEventListener('click', () => {
@@ -288,7 +394,18 @@ mode: BUS | SUBWAY | RAIL | AIR | FERRY | WALK</pre>
     t.classList.add('active'); setCode(t.dataset.lang);
   }));
   setCode('curl');
-  $('copyBtn').addEventListener('click', () => navigator.clipboard && navigator.clipboard.writeText($('codeText').textContent));
+  $('copyBtn').addEventListener('click', () => { navigator.clipboard && navigator.clipboard.writeText($('codeText').textContent); $('copyBtn').textContent = '복사됨'; setTimeout(() => $('copyBtn').textContent = '복사', 1200); });
+
+  // ── 문서: 네비 스크롤스파이 ──
+  const navLinks = [...document.querySelectorAll('#docsNav a')];
+  const spy = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id));
+      }
+    });
+  }, { rootMargin: '-73px 0px -70% 0px' });
+  document.querySelectorAll('#docsMain section').forEach(s => spy.observe(s));
 </script>
 </body>
 </html>
