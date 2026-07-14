@@ -55,12 +55,28 @@ Base URL: `http://<host>:8090`  ·  인증: **없음(공개)**  ·  응답: `app
 - **응답**: 쿼리 ~100~200ms. 인메모리·무상태 → 수평 확장 용이.
 - **공개 시 고려**: 인증이 없으므로 앞단에 rate limit/프록시 권장. 대량 트래픽이면 지도 타일은 자체/유료 타일 사용.
 
-### 메모리·prebuild (권장 배포)
-전국 GTFS를 매번 파싱하면 기동 시 메모리 피크(~3GB)가 커서 큰 인스턴스가 필요하다.
-대신 **Timetable을 한 번 빌드해 바이너리 스냅샷(`data/timetable.bin`, ~206MB)으로 저장** → 운영 서버는 이 파일만 로드하면 된다.
-- 스냅샷 로드 모드 실측: 기동 1초대, **RSS ~700MB**(`-Xmx1500m`) → **2GB 인스턴스로 전국 구동**.
-- 워크플로우: ① 여유 머신에서 `./start-backend.sh` 1회 실행 → `data/timetable.bin` 생성. ② 그 `.bin`만 서버로 복사(GTFS zip 불필요). ③ 서버에서 `./start-prod.sh` 실행(스냅샷 자동 로드).
-- 빌드 머신(스냅샷 없을 때)은 `-Xmx4g` 이상 권장, 운영(스냅샷 로드)은 `-Xmx1.5g`면 충분.
+### 운영 배포 (jar + prebuild 스냅샷)
+전국 GTFS를 매번 파싱하면 기동 메모리 피크(~3GB)가 크다. 대신 **Timetable을 한 번 빌드해
+바이너리 스냅샷(`data/timetable.bin`, ~206MB)** 으로 저장 → 운영 서버는 이 파일만 로드한다.
+스냅샷은 **플랫폼 무관**(JVM 표준 포맷, OS·아키텍처 상관없이 동일 로드).
+
+**빌드(여유 머신에서 1회)**
+```bash
+./start-backend.sh                       # GTFS로 빌드 → data/timetable.bin 생성
+cd backend && ./mvnw clean package -DskipTests   # 실행 jar 생성(target/*.jar)
+```
+**배포**
+- jar(`backend/target/daero-backend-*.jar`, ~21MB)와 스냅샷(`data/timetable.bin`, ~206MB)을 서버로.
+- 스냅샷은 100MB 초과라 git 커밋 불가 → **GitHub Release 자산**으로 배포 권장.
+
+**운영 실행 (jar, 저메모리)**
+```bash
+./run.sh              # java -jar, 기본 -Xmx700m (스냅샷 로드 → GTFS 불필요)
+XMX=1500m ./run.sh    # 2GB 인스턴스면 여유롭게
+```
+**실측(전국, 스냅샷 로드)**: 기동 ~1초, 쿼리 ~150ms.
+- `-Xmx700m` → **RSS ~605MB** → **1GB 인스턴스로 구동 가능**(저트래픽 권장).
+- `-Xmx1500m` → RSS ~715MB → **2GB 인스턴스 여유**(공개·트래픽 대비 권장).
 
 ## 데이터
 - GTFS 표준(정류장·노선·운행·시각표·환승). 출처는 공개 GTFS(예: 국가교통DB 전국, 지자체).
