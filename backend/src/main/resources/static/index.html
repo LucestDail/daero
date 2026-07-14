@@ -269,8 +269,11 @@ GET /api/gtfs/timetable → { "built": true, "patterns": 33071, "patternsByMode"
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   const $ = (id) => document.getElementById(id);
-  const ORIGIN = window.location.origin;
-  $('baseUrl').textContent = ORIGIN;
+  // 배포 주소 자동 감지: 페이지가 서빙된 origin + 서브경로(리버스 프록시 대응). 파일명 제거.
+  const API_BASE = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+  $('baseUrl').textContent = API_BASE;
+  // 상대경로(/api/...)를 배포 base 기준 절대 URL 로.
+  const api = (path) => path.startsWith('http') ? path : API_BASE + path;
 
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
@@ -310,7 +313,7 @@ GET /api/gtfs/timetable → { "built": true, "patterns": 33071, "patternsByMode"
     $('go').disabled = true; $('go').textContent = '탐색 중…';
     try {
       const t = $('time').value || '09:00', alts = $('alts').value || '1';
-      const r = await fetch(`/api/plan/coords?fromLat=${origin.lat}&fromLon=${origin.lng}&toLat=${dest.lat}&toLon=${dest.lng}&time=${t}&alternatives=${alts}`);
+      const r = await fetch(api(`/api/plan/coords?fromLat=${origin.lat}&fromLon=${origin.lng}&toLat=${dest.lat}&toLon=${dest.lng}&time=${t}&alternatives=${alts}`));
       render(await r.json());
     } catch (err) { $('result').innerHTML = `<div class="hint">오류: ${err}</div>`; }
     finally { $('go').disabled = false; $('go').textContent = '경로 찾기'; }
@@ -373,7 +376,7 @@ GET /api/gtfs/timetable → { "built": true, "patterns": 33071, "patternsByMode"
     $('reqStatus').textContent = '요청 중…';
     const t0 = performance.now();
     try {
-      const r = await fetch(path);
+      const r = await fetch(api(path));
       const txt = await r.text();
       let body; try { body = JSON.stringify(JSON.parse(txt), null, 2); } catch { body = txt; }
       $('reqStatus').textContent = `HTTP ${r.status} · ${Math.round(performance.now() - t0)}ms`;
@@ -384,9 +387,9 @@ GET /api/gtfs/timetable → { "built": true, "patterns": 33071, "patternsByMode"
   // ── 문서: 예제 코드 ──
   const example = "/api/plan/coords?fromLat=37.5665&fromLon=126.9780&toLat=37.4979&toLon=127.0276&time=09:00&alternatives=2";
   const codes = {
-    curl: `curl "${ORIGIN}${example}"`,
-    js: `const res = await fetch(\n  "${ORIGIN}${example}"\n);\nconst data = await res.json();\nconsole.log(data.options); // [추천, 대안...]`,
-    py: `import requests\nr = requests.get("${ORIGIN}/api/plan/coords", params={\n    "fromLat": 37.5665, "fromLon": 126.9780,\n    "toLat": 37.4979, "toLon": 127.0276,\n    "time": "09:00", "alternatives": 2,\n})\nfor o in r.json()["options"]:\n    print(o["tag"], o["durationMin"], "분", o["transfers"], "환승")`,
+    curl: `curl "${API_BASE}${example}"`,
+    js: `const res = await fetch(\n  "${API_BASE}${example}"\n);\nconst data = await res.json();\nconsole.log(data.options); // [추천, 대안...]`,
+    py: `import requests\nr = requests.get("${API_BASE}/api/plan/coords", params={\n    "fromLat": 37.5665, "fromLon": 126.9780,\n    "toLat": 37.4979, "toLon": 127.0276,\n    "time": "09:00", "alternatives": 2,\n})\nfor o in r.json()["options"]:\n    print(o["tag"], o["durationMin"], "분", o["transfers"], "환승")`,
   };
   function setCode(lang) { $('codeText').textContent = codes[lang]; }
   document.querySelectorAll('.codeTab').forEach(t => t.addEventListener('click', () => {
