@@ -401,7 +401,9 @@
   function legHtml(legs) {
     return legs.map(l => {
       const badge = `<span class="badge ${l.mode}">${modeKo[l.mode] || l.mode}${l.route ? ' ' + l.route : ''}</span>`;
-      return `<div class="leg">${badge}<div>${l.from} → ${l.to}<div class="times">${l.depart}-${l.arrive} (${l.min}분)</div></div></div>`;
+      const rt = (l.realtimeMin != null)
+        ? ` <span style="color:#059669;font-weight:600">⏱실시간 ${l.realtimeMin}분 후</span>` : '';
+      return `<div class="leg">${badge}<div>${l.from} → ${l.to}<div class="times">${l.depart}-${l.arrive} (${l.min}분)${rt}</div></div></div>`;
     }).join('');
   }
 

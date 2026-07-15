@@ -21,6 +21,8 @@ public class PlanController {
 
     private final TimetableBuilder builder;
     private final RaptorRouter router;
+    private final com.daero.client.TagoStopIndex tagoStops;
+    private final com.daero.client.TagoClient tago;
 
     /** 이름으로 정류장 검색. */
     @GetMapping("/search")
@@ -210,8 +212,34 @@ public class PlanController {
             if (ti != null) { lm.put("toLat", tt.lat[ti]); lm.put("toLon", tt.lon[ti]); }
             legs.add(lm);
         }
+        enrichRealtime(legs); // 첫 버스 승차 정류장에 실시간 도착 부착
         m.put("legs", legs);
         return m;
+    }
+
+    /** 첫 대중교통 leg가 버스면, 승차 정류장의 실시간 도착(TAGO)을 찾아 해당 노선 ETA를 부착. */
+    private void enrichRealtime(List<Map<String, Object>> legs) {
+        if (!tago.isEnabled() || !tagoStops.isLoaded()) return;
+        for (Map<String, Object> leg : legs) {
+            String mode = (String) leg.get("mode");
+            if ("WALK".equals(mode)) continue;      // 접근/환승 도보는 건너뛰고
+            if (!"BUS".equals(mode)) return;         // 첫 대중교통이 버스가 아니면(지하철 등) 실시간 생략
+            Object fl = leg.get("fromLat"), fo = leg.get("fromLon");
+            if (fl == null || fo == null) return;
+            String[] tn = tagoStops.nearest(((Number) fl).doubleValue(), ((Number) fo).doubleValue(), 60);
+            if (tn == null) return;                  // 근처 TAGO 정류장 없음
+            String routeNo = String.valueOf(leg.getOrDefault("route", ""));
+            // tn = [nodeId, cityCode] → arrivals(cityCode, nodeId)
+            for (com.daero.client.TagoClient.Arrival a : tago.arrivals(tn[1], tn[0])) {
+                if (a.routeNo().equals(routeNo)) {
+                    leg.put("realtimeMin", a.etaMin());
+                    leg.put("realtimeSec", a.etaSec());
+                    leg.put("realtimeStopsLeft", a.stopsLeft());
+                    break;
+                }
+            }
+            return; // 첫 버스 leg 하나만
+        }
     }
 
     /**
