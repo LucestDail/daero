@@ -72,7 +72,8 @@ public class PlanController {
         int[] s1 = {src}, z = {0}, d1 = {dst};
         List<RaptorRouter.Result> normal = router.journeys(s1, z, d1, z, departSec, false);
         List<RaptorRouter.Result> rail = router.journeys(s1, z, d1, z, departSec, true);
-        return ResponseEntity.ok(renderTagged(tt, normal, rail, departSec, clampAlts(alternatives), (System.nanoTime() - t0) / 1_000_000));
+        RaptorRouter.Result walk = walkJourney(tt.lat[src], tt.lon[src], tt.lat[dst], tt.lon[dst], departSec);
+        return ResponseEntity.ok(renderTagged(tt, normal, rail, walk, departSec, clampAlts(alternatives), (System.nanoTime() - t0) / 1_000_000));
     }
 
     /** 좌표 → 좌표 door-to-door(접근·하차 도보 포함). */
@@ -97,7 +98,8 @@ public class PlanController {
         long t0 = System.nanoTime();
         List<RaptorRouter.Result> normal = router.journeys(ss, sa, ds, de, departSec, false);
         List<RaptorRouter.Result> rail = router.journeys(ss, sa, ds, de, departSec, true);
-        Map<String, Object> m = renderTagged(tt, normal, rail, departSec, clampAlts(alternatives), (System.nanoTime() - t0) / 1_000_000);
+        RaptorRouter.Result walk = walkJourney(fromLat, fromLon, toLat, toLon, departSec);
+        Map<String, Object> m = renderTagged(tt, normal, rail, walk, departSec, clampAlts(alternatives), (System.nanoTime() - t0) / 1_000_000);
         m.put("accessStops", src.size());
         m.put("egressStops", dst.size());
         return ResponseEntity.ok(m);
@@ -113,13 +115,16 @@ public class PlanController {
      * 우선순위: 추천(환승 페널티 최소) → 지하철·철도 우선 → 환승 최소 → 나머지 파레토(빠름 순).
      */
     private Map<String, Object> renderTagged(Timetable tt, List<RaptorRouter.Result> normal,
-                                             List<RaptorRouter.Result> rail, int departSec,
-                                             int maxAlts, long queryMs) {
+                                             List<RaptorRouter.Result> rail, RaptorRouter.Result walk,
+                                             int departSec, int maxAlts, long queryMs) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("queryMs", queryMs);
-        if (normal.isEmpty()) { m.put("found", false); return m; }
+        if (normal.isEmpty() && walk == null) { m.put("found", false); return m; }
 
-        RaptorRouter.Result primary = minScore(normal);
+        // 도보(직접)도 추천 후보에 포함 → 짧은 거리는 도보가 추천이 됨
+        List<RaptorRouter.Result> primaryCands = new ArrayList<>(normal);
+        if (walk != null) primaryCands.add(walk);
+        RaptorRouter.Result primary = minScore(primaryCands);
         List<Map<String, Object>> opts = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         opts.add(oneJourney(tt, primary, departSec, "추천"));
@@ -127,6 +132,7 @@ public class PlanController {
 
         // 후보를 우선순위대로 모아 중복 제거하며 maxAlts 까지 대안 추가
         List<Object[]> cands = new ArrayList<>(); // [Result, tag]
+        if (walk != null) cands.add(new Object[]{walk, "도보"});
         RaptorRouter.Result railBest = rail.isEmpty() ? null : minScore(rail);
         if (railBest != null && usesRail(railBest)) cands.add(new Object[]{railBest, "지하철·철도 우선"});
         if (!normal.isEmpty()) cands.add(new Object[]{normal.get(0), "환승 최소"}); // 파레토 첫=환승 최소
@@ -146,8 +152,21 @@ public class PlanController {
         return m;
     }
 
-    /** 여정 식별 키(도착·환승·첫 대중교통 노선) — 중복 제거용. */
+    private static final double MAX_WALK_M = 2500; // 이 거리 이내면 직접 도보를 후보로 제시
+
+    /** 출발→도착 직접 도보 여정. 너무 멀면(2.5km 초과) null. */
+    private RaptorRouter.Result walkJourney(double fromLat, double fromLon, double toLat, double toLon, int departSec) {
+        double dist = Timetable.distanceMeters(fromLat, fromLon, toLat, toLon);
+        if (dist > MAX_WALK_M) return null;
+        int walkSec = (int) Math.round(dist / WALK_SPEED);
+        RaptorRouter.Leg leg = new RaptorRouter.Leg("WALK", "", "", "출발지", "", "도착지", departSec, departSec + walkSec);
+        return new RaptorRouter.Result(true, departSec + walkSec, walkSec, 0, List.of(leg));
+    }
+
+    /** 여정 식별 키(중복 제거용). 도보만인 여정은 모두 동일 키로 취급(중복 도보 옵션 방지). */
     private String key(RaptorRouter.Result r) {
+        boolean walkOnly = r.legs().stream().allMatch(l -> "WALK".equals(l.mode()));
+        if (walkOnly) return "WALK-ONLY";
         String route = r.legs().stream().filter(l -> !"WALK".equals(l.mode()))
                 .map(RaptorRouter.Leg::routeName).findFirst().orElse("");
         return r.arrivalSec() + "|" + r.transfers() + "|" + route;
@@ -195,20 +214,22 @@ public class PlanController {
         return m;
     }
 
-    /** 수도권 통합요금 근사: 기본 1250원 + 10km 초과 5km마다 100원(도시 대중교통 구간만). */
+    /**
+     * 도시 대중교통(버스·지하철) 구간만 통합요금 근사: 기본 1250원 + 10km 초과 5km마다 100원.
+     * 철도·항공 구간은 실요금 체계가 달라 요금 산정에서 제외(거리에 포함하지 않음, fareNote로 별도 안내).
+     */
     private int estimateFare(Timetable tt, RaptorRouter.Result r) {
         double km = 0;
         boolean anyUrban = false;
         for (RaptorRouter.Leg l : r.legs()) {
-            if ("WALK".equals(l.mode())) continue;
+            if (!("BUS".equals(l.mode()) || "SUBWAY".equals(l.mode()))) continue; // 도시 구간만
             Integer f = tt.stopIndex.get(l.fromStopId()), t = tt.stopIndex.get(l.toStopId());
             if (f == null || t == null) continue;
-            if ("BUS".equals(l.mode()) || "SUBWAY".equals(l.mode())) anyUrban = true;
+            anyUrban = true;
             km += Timetable.distanceMeters(tt.lat[f], tt.lon[f], tt.lat[t], tt.lon[t]) / 1000.0;
         }
-        if (!anyUrban) return 0; // 철도·항공만이면 근사 부정확 → 0(별도 표기)
-        int fare = 1250 + (int) Math.max(0, Math.ceil((km - 10) / 5.0)) * 100;
-        return fare;
+        if (!anyUrban) return 0; // 도시구간 없음(도보만/철도만) → 0
+        return 1250 + (int) Math.max(0, Math.ceil((km - 10) / 5.0)) * 100;
     }
 
     private List<int[]> topAccess(List<int[]> near) {
