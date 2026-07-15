@@ -98,8 +98,8 @@ public class TagoClient {
             con.setRequestMethod("GET");
             con.setRequestProperty("User-Agent", UA); // data.go.kr WAF 통과 필수
             con.setRequestProperty("Accept", "application/json");
-            con.setConnectTimeout(3000);
-            con.setReadTimeout(5000);
+            con.setConnectTimeout(1500);
+            con.setReadTimeout(2500);
             int code = con.getResponseCode();
             var is = code == 200 ? con.getInputStream() : con.getErrorStream();
             try (BufferedReader r = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {

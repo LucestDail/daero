@@ -129,7 +129,7 @@ public class PlanController {
         RaptorRouter.Result primary = minScore(primaryCands);
         List<Map<String, Object>> opts = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
-        opts.add(oneJourney(tt, primary, departSec, "추천"));
+        opts.add(oneJourney(tt, primary, departSec, "추천", true)); // 실시간은 추천에만
         seen.add(key(primary));
 
         // 후보를 우선순위대로 모아 중복 제거하며 maxAlts 까지 대안 추가
@@ -145,7 +145,7 @@ public class PlanController {
             if (opts.size() - 1 >= maxAlts) break;
             RaptorRouter.Result r = (RaptorRouter.Result) c[0];
             String tag = (String) c[1];
-            if (seen.add(key(r))) opts.add(oneJourney(tt, r, departSec, tag));
+            if (seen.add(key(r))) opts.add(oneJourney(tt, r, departSec, tag, false));
         }
 
         m.put("found", true);
@@ -188,7 +188,7 @@ public class PlanController {
         return r.legs().stream().anyMatch(l -> "SUBWAY".equals(l.mode()) || "RAIL".equals(l.mode()));
     }
 
-    private Map<String, Object> oneJourney(Timetable tt, RaptorRouter.Result r, int departSec, String tag) {
+    private Map<String, Object> oneJourney(Timetable tt, RaptorRouter.Result r, int departSec, String tag, boolean withRealtime) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("tag", tag);
         m.put("departure", fmt(departSec));
@@ -212,7 +212,7 @@ public class PlanController {
             if (ti != null) { lm.put("toLat", tt.lat[ti]); lm.put("toLon", tt.lon[ti]); }
             legs.add(lm);
         }
-        enrichRealtime(legs); // 첫 버스 승차 정류장에 실시간 도착 부착
+        if (withRealtime) enrichRealtime(legs); // 첫 버스 승차 정류장에 실시간 도착 부착(추천 경로만)
         m.put("legs", legs);
         return m;
     }
@@ -229,8 +229,17 @@ public class PlanController {
             String[] tn = tagoStops.nearest(((Number) fl).doubleValue(), ((Number) fo).doubleValue(), 60);
             if (tn == null) return;                  // 근처 TAGO 정류장 없음
             String routeNo = String.valueOf(leg.getOrDefault("route", ""));
-            // tn = [nodeId, cityCode] → arrivals(cityCode, nodeId)
-            for (com.daero.client.TagoClient.Arrival a : tago.arrivals(tn[1], tn[0])) {
+            // tn = [nodeId, cityCode] → arrivals(cityCode, nodeId). 응답 지연 방지 위해 0.9초 시간제한
+            // (초과 시 실시간 생략; 백그라운드 호출은 캐시를 채워 다음 요청은 빠름).
+            List<com.daero.client.TagoClient.Arrival> arrivals;
+            try {
+                arrivals = java.util.concurrent.CompletableFuture
+                        .supplyAsync(() -> tago.arrivals(tn[1], tn[0]))
+                        .get(900, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (Exception e) {
+                return;
+            }
+            for (com.daero.client.TagoClient.Arrival a : arrivals) {
                 if (a.routeNo().equals(routeNo)) {
                     leg.put("realtimeMin", a.etaMin());
                     leg.put("realtimeSec", a.etaSec());
