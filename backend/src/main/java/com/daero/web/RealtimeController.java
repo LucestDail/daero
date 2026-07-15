@@ -30,14 +30,13 @@ public class RealtimeController {
             return m;
         }
         List<Map<String, Object>> arr = new ArrayList<>();
-        for (TagoClient.Arrival a : tago.arrivals(cityCode, nodeId)) {
+        for (com.daero.client.BusArrival a : tago.arrivals(cityCode, nodeId)) {
             Map<String, Object> o = new LinkedHashMap<>();
             o.put("routeNo", a.routeNo());
             o.put("routeType", a.routeType());
             o.put("stopsLeft", a.stopsLeft());
             o.put("etaSec", a.etaSec());
             o.put("etaMin", a.etaMin());
-            o.put("stopName", a.stopName());
             arr.add(o);
         }
         arr.sort((x, y) -> Integer.compare((int) x.get("etaSec"), (int) y.get("etaSec")));

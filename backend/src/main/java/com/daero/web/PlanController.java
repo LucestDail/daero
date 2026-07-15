@@ -23,6 +23,7 @@ public class PlanController {
     private final RaptorRouter router;
     private final com.daero.client.TagoStopIndex tagoStops;
     private final com.daero.client.TagoClient tago;
+    private final com.daero.client.SeoulBusClient seoulBus;
 
     /** 이름으로 정류장 검색. */
     @GetMapping("/search")
@@ -217,9 +218,12 @@ public class PlanController {
         return m;
     }
 
-    /** 첫 대중교통 leg가 버스면, 승차 정류장의 실시간 도착(TAGO)을 찾아 해당 노선 ETA를 부착. */
+    /**
+     * 첫 대중교통 leg가 버스면 승차 정류장의 실시간 도착을 찾아 해당 노선 ETA를 부착.
+     * 서울(도시코드 11)은 서울시 API(arsId), 그 외는 TAGO(nodeId). 0.9초 시간제한.
+     */
     private void enrichRealtime(List<Map<String, Object>> legs) {
-        if (!tago.isEnabled() || !tagoStops.isLoaded()) return;
+        if (!tagoStops.isLoaded() || (!tago.isEnabled() && !seoulBus.isEnabled())) return;
         for (Map<String, Object> leg : legs) {
             String mode = (String) leg.get("mode");
             if ("WALK".equals(mode)) continue;      // 접근/환승 도보는 건너뛰고
@@ -227,19 +231,21 @@ public class PlanController {
             Object fl = leg.get("fromLat"), fo = leg.get("fromLon");
             if (fl == null || fo == null) return;
             String[] tn = tagoStops.nearest(((Number) fl).doubleValue(), ((Number) fo).doubleValue(), 60);
-            if (tn == null) return;                  // 근처 TAGO 정류장 없음
+            if (tn == null) return;                  // 근처 정류장 없음
+            String nodeId = tn[0], cityCode = tn[1], arsId = tn[2];
             String routeNo = String.valueOf(leg.getOrDefault("route", ""));
-            // tn = [nodeId, cityCode] → arrivals(cityCode, nodeId). 응답 지연 방지 위해 0.9초 시간제한
-            // (초과 시 실시간 생략; 백그라운드 호출은 캐시를 채워 다음 요청은 빠름).
-            List<com.daero.client.TagoClient.Arrival> arrivals;
+            boolean seoul = "11".equals(cityCode);
+            if (seoul ? !seoulBus.isEnabled() : !tago.isEnabled()) return;
+            // 응답 지연 방지 위해 0.9초 시간제한(초과 시 생략; 백그라운드가 캐시 채워 다음 요청은 빠름).
+            List<com.daero.client.BusArrival> arrivals;
             try {
                 arrivals = java.util.concurrent.CompletableFuture
-                        .supplyAsync(() -> tago.arrivals(tn[1], tn[0]))
+                        .supplyAsync(() -> seoul ? seoulBus.arrivals(arsId) : tago.arrivals(cityCode, nodeId))
                         .get(900, java.util.concurrent.TimeUnit.MILLISECONDS);
             } catch (Exception e) {
                 return;
             }
-            for (com.daero.client.TagoClient.Arrival a : arrivals) {
+            for (com.daero.client.BusArrival a : arrivals) {
                 if (a.routeNo().equals(routeNo)) {
                     leg.put("realtimeMin", a.etaMin());
                     leg.put("realtimeSec", a.etaSec());

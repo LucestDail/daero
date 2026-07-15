@@ -44,14 +44,8 @@ public class TagoClient {
         return !serviceKey.isBlank();
     }
 
-    /** 실시간 도착 항목. */
-    public record Arrival(String routeNo, String routeType, int stopsLeft, int etaSec,
-                          String routeId, String stopName) {
-        public int etaMin() { return (int) Math.round(etaSec / 60.0); }
-    }
-
     /** 정류소(cityCode, nodeId)의 실시간 도착 목록. 미설정/실패 시 빈 목록(캐시 있으면 캐시). */
-    public List<Arrival> arrivals(String cityCode, String nodeId) {
+    public List<BusArrival> arrivals(String cityCode, String nodeId) {
         if (!isEnabled() || cityCode == null || nodeId == null) return List.of();
         String key = cityCode + "|" + nodeId;
         long now = System.currentTimeMillis();
@@ -61,7 +55,7 @@ public class TagoClient {
             String url = BASE + "?serviceKey=" + enc(serviceKey)
                     + "&cityCode=" + enc(cityCode) + "&nodeId=" + enc(nodeId)
                     + "&numOfRows=50&pageNo=1&_type=json";
-            List<Arrival> list = parse(get(url));
+            List<BusArrival> list = parse(get(url));
             cache.put(key, new Cached(now, list));
             return list;
         } catch (Exception e) {
@@ -70,8 +64,8 @@ public class TagoClient {
         }
     }
 
-    private List<Arrival> parse(String body) throws Exception {
-        List<Arrival> out = new ArrayList<>();
+    private List<BusArrival> parse(String body) throws Exception {
+        List<BusArrival> out = new ArrayList<>();
         JsonNode root = om.readTree(body);
         JsonNode header = root.path("response").path("header");
         if (!"00".equals(header.path("resultCode").asText())) return out; // 정상 아님(도착정보 없음 등)
@@ -82,14 +76,12 @@ public class TagoClient {
         return out;
     }
 
-    private Arrival toArrival(JsonNode n) {
-        return new Arrival(
+    private BusArrival toArrival(JsonNode n) {
+        return new BusArrival(
                 n.path("routeno").asText(""),
                 n.path("routetp").asText(""),
                 n.path("arrprevstationcnt").asInt(0),
-                n.path("arrtime").asInt(0),
-                n.path("routeid").asText(""),
-                n.path("nodenm").asText(""));
+                n.path("arrtime").asInt(0));
     }
 
     private String get(String apiUrl) throws Exception {
@@ -118,5 +110,5 @@ public class TagoClient {
         return URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 
-    private record Cached(long ts, List<Arrival> list) {}
+    private record Cached(long ts, List<BusArrival> list) {}
 }

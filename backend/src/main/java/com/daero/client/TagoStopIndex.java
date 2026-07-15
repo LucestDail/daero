@@ -30,6 +30,7 @@ public class TagoStopIndex {
 
     private String[] nodeId = new String[0];
     private String[] cityCode = new String[0];
+    private String[] arsId = new String[0]; // 모바일단축번호(서울 arsId 등)
     private double[] lat = new double[0];
     private double[] lon = new double[0];
     private final Map<Long, int[]> grid = new HashMap<>();
@@ -42,7 +43,7 @@ public class TagoStopIndex {
     public boolean isLoaded() { return loaded; }
     public int size() { return nodeId.length; }
 
-    /** 좌표 근방(반경 m) 최근접 TAGO 정류장. 없으면 null. 반환 [nodeId, cityCode]. */
+    /** 좌표 근방(반경 m) 최근접 TAGO 정류장. 없으면 null. 반환 [nodeId, cityCode, arsId]. */
     public String[] nearest(double qlat, double qlon, double radiusM) {
         if (!loaded) return null;
         int clat = (int) Math.floor(qlat / CELL), clon = (int) Math.floor(qlon / CELL);
@@ -57,7 +58,7 @@ public class TagoStopIndex {
                 }
             }
         }
-        return best < 0 ? null : new String[]{nodeId[best], cityCode[best]};
+        return best < 0 ? null : new String[]{nodeId[best], cityCode[best], arsId[best]};
     }
 
     @PostConstruct
@@ -69,11 +70,12 @@ public class TagoStopIndex {
             long t0 = System.currentTimeMillis();
             List<String> ids = new ArrayList<>(1 << 18);
             List<String> cities = new ArrayList<>(1 << 18);
+            List<String> arss = new ArrayList<>(1 << 18);
             List<Double> lats = new ArrayList<>(1 << 18);
             List<Double> lons = new ArrayList<>(1 << 18);
             Charset cp949 = Charset.forName("MS949");
             try (BufferedReader r = new BufferedReader(new InputStreamReader(Files.newInputStream(p), cp949))) {
-                r.readLine(); // 헤더
+                r.readLine(); // 헤더: 정류장번호,정류장명,위도,경도,정보수집일,모바일단축번호,도시코드,...
                 String line;
                 while ((line = r.readLine()) != null) {
                     String[] c = line.split(",");
@@ -82,6 +84,7 @@ public class TagoStopIndex {
                         double la = Double.parseDouble(c[2].trim());
                         double lo = Double.parseDouble(c[3].trim());
                         ids.add(c[0].trim()); cities.add(c[6].trim());
+                        arss.add(c[5].trim());  // 모바일단축번호(서울 arsId)
                         lats.add(la); lons.add(lo);
                     } catch (NumberFormatException ignore) { /* 좌표 파싱 실패 행 스킵 */ }
                 }
@@ -89,6 +92,7 @@ public class TagoStopIndex {
             int n = ids.size();
             nodeId = ids.toArray(new String[0]);
             cityCode = cities.toArray(new String[0]);
+            arsId = arss.toArray(new String[0]);
             lat = new double[n]; lon = new double[n];
             Map<Long, List<Integer>> tmp = new HashMap<>();
             for (int i = 0; i < n; i++) {
