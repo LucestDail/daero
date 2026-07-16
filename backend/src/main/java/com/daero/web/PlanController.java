@@ -124,8 +124,11 @@ public class PlanController {
         m.put("queryMs", queryMs);
         if (normal.isEmpty() && walk == null) { m.put("found", false); return m; }
 
-        // 도보(직접)도 추천 후보에 포함 → 짧은 거리는 도보가 추천이 됨
+        // 추천 후보 = 전 모드 파레토 + 철도전용 파레토 + 도보.
+        // 철도전용을 넣는 이유: 전 모드에선 근소하게 빠른 버스가 지하철을 파레토 지배해 탈락시키므로,
+        // 지하철·철도 신뢰성 보너스(score)를 적용받을 기회를 주려면 후보에 직접 포함해야 함.
         List<RaptorRouter.Result> primaryCands = new ArrayList<>(normal);
+        primaryCands.addAll(rail);
         if (walk != null) primaryCands.add(walk);
         RaptorRouter.Result primary = minScore(primaryCands);
         List<Map<String, Object>> opts = new ArrayList<>();
@@ -183,7 +186,7 @@ public class PlanController {
         RaptorRouter.Result best = js.get(0);
         int bs = Integer.MAX_VALUE;
         for (RaptorRouter.Result r : js) {
-            int sc = r.arrivalSec() + 300 * r.transfers();
+            int sc = router.score(r); // 추천 선정 점수(모드별 환승 페널티 + 지하철·철도 신뢰성 보너스) 통일
             if (sc < bs) { bs = sc; best = r; }
         }
         return best;

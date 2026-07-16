@@ -21,7 +21,11 @@ public class RaptorRouter {
 
     private static final int INF = Integer.MAX_VALUE;
     private static final int MAX_ROUNDS = 6;              // 승차 최대 6회(환승 5회)
-    private static final int TRANSFER_PENALTY_SEC = 300;  // 추천 선택 시 환승 1회당 5분 페널티
+    // 추천 선정 가중치(도착시각엔 이미 대기·도보가 반영돼 있으므로 아래는 '수고·신뢰성' 보정만).
+    private static final int TRANSFER_BUS_SEC = 180;      // 버스 환승 페널티 3분
+    private static final int TRANSFER_RAIL_SEC = 90;      // 지하철·철도 환승 페널티 1.5분(배차 짧고 정체 없음)
+    private static final int TRANSFER_OTHER_SEC = 120;    // 그 외(항공 등) 환승 2분
+    private static final int RAIL_BONUS_SEC = 60;         // 지하철·철도 구간당 신뢰성 보너스 1분(정체 무관)
 
     private final TimetableBuilder builder;
 
@@ -67,17 +71,34 @@ public class RaptorRouter {
         return query(new int[]{srcStop}, new int[]{0}, new int[]{dstStop}, new int[]{0}, departSec);
     }
 
-    /** 추천 경로(환승 페널티 포함 최소) 하나. */
+    /** 추천 경로(점수 최소) 하나. */
     public Result query(int[] srcStops, int[] srcAccessSec, int[] dstStops, int[] dstEgressSec, int departSec) {
         List<Result> js = journeys(srcStops, srcAccessSec, dstStops, dstEgressSec, departSec);
         if (js.isEmpty()) return new Result(false, -1, -1, -1, List.of());
         Result best = js.get(0);
         int bestScore = INF;
         for (Result r : js) {
-            int score = r.arrivalSec() + TRANSFER_PENALTY_SEC * r.transfers();
+            int score = score(r);
             if (score < bestScore) { bestScore = score; best = r; }
         }
         return best;
+    }
+
+    /**
+     * 추천 선정 점수(작을수록 우수): 도착시각 + 모드별 환승 페널티 − 지하철·철도 구간 신뢰성 보너스.
+     * 도착시각이 이미 대기·도보를 포함하므로, 환승 페널티는 '수고', 보너스는 '정체 없는 정시성'을 반영.
+     */
+    public int score(Result r) {
+        int s = r.arrivalSec();
+        boolean firstTransit = true;
+        for (Leg l : r.legs()) {
+            if ("WALK".equals(l.mode())) continue;
+            boolean rail = "SUBWAY".equals(l.mode()) || "RAIL".equals(l.mode());
+            if (!firstTransit) s += rail ? TRANSFER_RAIL_SEC : "BUS".equals(l.mode()) ? TRANSFER_BUS_SEC : TRANSFER_OTHER_SEC;
+            firstTransit = false;
+            if (rail) s -= RAIL_BONUS_SEC;
+        }
+        return s;
     }
 
     public List<Result> journeys(int[] srcStops, int[] srcAccessSec, int[] dstStops, int[] dstEgressSec, int departSec) {
