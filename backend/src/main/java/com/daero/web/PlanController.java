@@ -63,7 +63,7 @@ public class PlanController {
     /** 정류장ID → 정류장ID. */
     @GetMapping
     public ResponseEntity<?> plan(@RequestParam String fromStop, @RequestParam String toStop,
-                                  @RequestParam(defaultValue = "08:00") String time,
+                                  @RequestParam(required = false) String time,
                                   @RequestParam(defaultValue = "1") int alternatives) {
         Timetable tt = builder.getTimetable();
         if (tt == null) return ResponseEntity.status(503).body(Map.of("error", "timetable not built"));
@@ -83,7 +83,7 @@ public class PlanController {
     @GetMapping("/coords")
     public ResponseEntity<?> coords(@RequestParam double fromLat, @RequestParam double fromLon,
                                     @RequestParam double toLat, @RequestParam double toLon,
-                                    @RequestParam(defaultValue = "08:00") String time,
+                                    @RequestParam(required = false) String time,
                                     @RequestParam(defaultValue = "1") int alternatives) {
         Timetable tt = builder.getTimetable();
         if (tt == null) return ResponseEntity.status(503).body(Map.of("error", "timetable not built"));
@@ -300,6 +300,10 @@ public class PlanController {
     }
 
     private static int parseTime(String s) {
+        if (s == null || s.isBlank()) { // 미지정 → 현재 시각(한국 표준시) 기준 출발
+            java.time.LocalTime now = java.time.LocalTime.now(java.time.ZoneId.of("Asia/Seoul"));
+            return now.getHour() * 3600 + now.getMinute() * 60 + now.getSecond();
+        }
         String[] p = s.split(":");
         int h = Integer.parseInt(p[0].trim());
         int m = p.length > 1 ? Integer.parseInt(p[1].trim()) : 0;
