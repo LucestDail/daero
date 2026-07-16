@@ -196,6 +196,7 @@
         <tr><td>legs[].depart, arrive</td><td>string</td><td>구간 출발·도착 시각</td></tr>
         <tr><td>legs[].min</td><td>int</td><td>구간 소요(분)</td></tr>
         <tr><td>legs[].fromLat/fromLon/toLat/toLon</td><td>double</td><td>구간 양끝 좌표(경로선용)</td></tr>
+        <tr><td>legs[].path</td><td>[[lat,lon]]</td><td>정차 순서대로 경유좌표(지도 선형용). 승차~하차 중간 정류장 포함</td></tr>
         <tr><td>legs[].realtimeMin</td><td>int</td><td>실시간 도착(분). 추천 경로 첫 버스 leg에, 실시간 데이터 있을 때만 표시(없으면 필드 없음)</td></tr>
         <tr><td>legs[].realtimeSec</td><td>int</td><td>실시간 도착(초)</td></tr>
         <tr><td>legs[].realtimeStopsLeft</td><td>int</td><td>도착예정 버스의 남은 정거장 수</td></tr>
@@ -385,11 +386,14 @@
     nodeLayer = L.layerGroup().addTo(map);
     const o = options[idx], all = [[origin.lat, origin.lng]], segs = [];
     o.legs.forEach(l => {
-      if (l.fromLat && l.toLat) {
-        segs.push(L.polyline([[l.fromLat, l.fromLon], [l.toLat, l.toLon]], { color: modeColor[l.mode] || '#111827', weight: 5, opacity: 0.8 }));
-        all.push([l.fromLat, l.fromLon], [l.toLat, l.toLon]);
-        node(l.fromLat, l.fromLon, l.from, l.depart, l.mode);
+      // path(정차 순서 경유좌표)가 있으면 실제 선형을 따라 그리고, 없으면 양끝 직선
+      const line = (l.path && l.path.length > 1) ? l.path
+                 : (l.fromLat && l.toLat) ? [[l.fromLat, l.fromLon], [l.toLat, l.toLon]] : null;
+      if (line) {
+        segs.push(L.polyline(line, { color: modeColor[l.mode] || '#111827', weight: 5, opacity: 0.8 }));
+        line.forEach(p => all.push(p));
       }
+      if (l.fromLat && l.toLat) node(l.fromLat, l.fromLon, l.from, l.depart, l.mode);
     });
     const last = o.legs[o.legs.length - 1];
     if (last && last.toLat) node(last.toLat, last.toLon, last.to, last.arrive, last.mode);

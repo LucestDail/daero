@@ -27,7 +27,7 @@ public class RaptorRouter {
 
     public record Leg(String mode, String routeName,
                       String fromStopId, String fromName, String toStopId, String toName,
-                      int depSec, int arrSec) {}
+                      int depSec, int arrSec, List<double[]> path) {}
 
     public record Result(boolean found, int arrivalSec, int durationSec, int transfers, List<Leg> legs) {}
 
@@ -35,6 +35,32 @@ public class RaptorRouter {
     private static final class Ctx {
         int[][] arrK, pStop, pPat, pTrip, pBoard, pAlight;
         int R, departSec;
+    }
+
+    // 쿼리당 ~40MB 라벨 배열 재사용 풀. 동시성 상한(server.tomcat.threads.max)과 맞물려 메모리 피크 제한.
+    private static final int MAX_POOL = 16;
+    private final java.util.concurrent.ConcurrentLinkedQueue<Ctx> pool = new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+    /** 풀에서 Ctx 대여(크기 불일치·없으면 신규 할당) 후 초기화. */
+    private Ctx borrow(int nStops, int R) {
+        Ctx c = pool.poll();
+        if (c == null || c.arrK == null || c.arrK.length != R + 1 || c.arrK[0].length != nStops) {
+            c = new Ctx();
+            c.arrK = new int[R + 1][nStops];
+            c.pStop = new int[R + 1][nStops];
+            c.pPat = new int[R + 1][nStops];
+            c.pTrip = new int[R + 1][nStops];
+            c.pBoard = new int[R + 1][nStops];
+            c.pAlight = new int[R + 1][nStops];
+        }
+        for (int[] a : c.arrK) Arrays.fill(a, INF);
+        for (int[] a : c.pStop) Arrays.fill(a, -2);
+        return c;
+    }
+
+    /** Ctx 반납(풀 상한까지만 보관, 초과분은 GC 대상). */
+    private void giveBack(Ctx c) {
+        if (c != null && pool.size() < MAX_POOL) pool.offer(c);
     }
 
     public Result query(int srcStop, int dstStop, int departSec) {
@@ -64,25 +90,28 @@ public class RaptorRouter {
         Timetable tt = builder.getTimetable();
         if (tt == null) return List.of();
         Ctx ctx = run(tt, srcStops, srcAccessSec, departSec, railOnly);
-
-        // 라운드별로 도착 최소 dst 를 잡고, 라운드가 늘수록 더 이른 도착이면 새 파레토 점.
-        List<Result> out = new ArrayList<>();
-        int bestSoFar = INF;
-        for (int k = 0; k <= ctx.R; k++) {
-            int bd = -1, ba = INF;
-            for (int i = 0; i < dstStops.length; i++) {
-                int d = dstStops[i];
-                if (ctx.arrK[k][d] == INF) continue;
-                int a = ctx.arrK[k][d] + dstEgressSec[i];
-                if (a < ba) { ba = a; bd = d; }
+        try {
+            // 라운드별로 도착 최소 dst 를 잡고, 라운드가 늘수록 더 이른 도착이면 새 파레토 점.
+            List<Result> out = new ArrayList<>();
+            int bestSoFar = INF;
+            for (int k = 0; k <= ctx.R; k++) {
+                int bd = -1, ba = INF;
+                for (int i = 0; i < dstStops.length; i++) {
+                    int d = dstStops[i];
+                    if (ctx.arrK[k][d] == INF) continue;
+                    int a = ctx.arrK[k][d] + dstEgressSec[i];
+                    if (a < ba) { ba = a; bd = d; }
+                }
+                if (bd == -1 || ba >= bestSoFar) continue;
+                bestSoFar = ba;
+                List<Leg> legs = reconstruct(tt, ctx, bd, k);
+                int transfers = (int) legs.stream().filter(l -> !"WALK".equals(l.mode())).count() - 1;
+                out.add(new Result(true, ba, ba - departSec, Math.max(0, transfers), legs));
             }
-            if (bd == -1 || ba >= bestSoFar) continue;
-            bestSoFar = ba;
-            List<Leg> legs = reconstruct(tt, ctx, bd, k);
-            int transfers = (int) legs.stream().filter(l -> !"WALK".equals(l.mode())).count() - 1;
-            out.add(new Result(true, ba, ba - departSec, Math.max(0, transfers), legs));
+            return out;
+        } finally {
+            giveBack(ctx); // Leg 는 값 복사본이라 재사용 안전
         }
-        return out;
     }
 
     private static final int BUS_ORD = Route.Mode.BUS.ordinal();
@@ -90,16 +119,8 @@ public class RaptorRouter {
     /** 라운드 루프 실행 → 라벨·부모포인터 채운 Ctx. railOnly 면 버스 패턴 스캔 제외. */
     private Ctx run(Timetable tt, int[] srcStops, int[] srcAccessSec, int departSec, boolean railOnly) {
         int nStops = tt.nStops, R = MAX_ROUNDS;
-        Ctx c = new Ctx();
+        Ctx c = borrow(nStops, R);
         c.R = R; c.departSec = departSec;
-        c.arrK = new int[R + 1][nStops];
-        c.pStop = new int[R + 1][nStops];
-        c.pPat = new int[R + 1][nStops];
-        c.pTrip = new int[R + 1][nStops];
-        c.pBoard = new int[R + 1][nStops];
-        c.pAlight = new int[R + 1][nStops];
-        for (int[] a : c.arrK) Arrays.fill(a, INF);
-        for (int[] a : c.pStop) Arrays.fill(a, -2);
 
         List<Integer> marked = new ArrayList<>();
         for (int i = 0; i < srcStops.length; i++) {
@@ -181,15 +202,22 @@ public class RaptorRouter {
                 int L = tt.patternStopOffset[p + 1] - off;
                 int base = tt.patternTimeOffset[p];
                 int ti = c.pTrip[ck][cur];
-                int depSec = tt.dep[base + ti * L + c.pBoard[ck][cur]];
-                int arrSec = tt.arr[base + ti * L + c.pAlight[ck][cur]];
+                int boardPos = c.pBoard[ck][cur], alightPos = c.pAlight[ck][cur];
+                int depSec = tt.dep[base + ti * L + boardPos];
+                int arrSec = tt.arr[base + ti * L + alightPos];
                 String mode = Route.Mode.values()[tt.patternMode[p]].name();
+                List<double[]> path = new ArrayList<>(alightPos - boardPos + 1); // 승차~하차 사이 정차 순서대로 경유좌표
+                for (int i = boardPos; i <= alightPos; i++) {
+                    int s = tt.patternStops[off + i];
+                    path.add(new double[]{tt.lat[s], tt.lon[s]});
+                }
                 legs.add(new Leg(mode, tt.patternRouteName[p], tt.stopId[from], tt.stopName[from],
-                        tt.stopId[cur], tt.stopName[cur], depSec, arrSec));
+                        tt.stopId[cur], tt.stopName[cur], depSec, arrSec, path));
                 cur = from; ck = ck - 1;
             } else {
                 legs.add(new Leg("WALK", "", tt.stopId[from], tt.stopName[from],
-                        tt.stopId[cur], tt.stopName[cur], c.arrK[ck][from], c.arrK[ck][cur]));
+                        tt.stopId[cur], tt.stopName[cur], c.arrK[ck][from], c.arrK[ck][cur],
+                        new ArrayList<>(List.of(coord(tt, from), coord(tt, cur)))));
                 cur = from;
             }
         }
@@ -197,13 +225,23 @@ public class RaptorRouter {
         return mergeWalks(legs);
     }
 
+    private static double[] coord(Timetable tt, int s) {
+        return new double[]{tt.lat[s], tt.lon[s]};
+    }
+
     private List<Leg> mergeWalks(List<Leg> legs) {
         List<Leg> out = new ArrayList<>();
         for (Leg l : legs) {
             if (!out.isEmpty() && "WALK".equals(l.mode()) && "WALK".equals(out.get(out.size() - 1).mode())) {
                 Leg prev = out.remove(out.size() - 1);
+                List<double[]> path = new ArrayList<>(prev.path());
+                List<double[]> lp = l.path();
+                for (int i = 0; i < lp.size(); i++) {
+                    if (i == 0 && !path.isEmpty()) continue; // 접합점 중복 좌표 스킵
+                    path.add(lp.get(i));
+                }
                 out.add(new Leg("WALK", "", prev.fromStopId(), prev.fromName(),
-                        l.toStopId(), l.toName(), prev.depSec(), l.arrSec()));
+                        l.toStopId(), l.toName(), prev.depSec(), l.arrSec(), path));
             } else {
                 out.add(l);
             }

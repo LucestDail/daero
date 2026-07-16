@@ -142,10 +142,13 @@ public class PlanController {
         for (int i = normal.size() - 1; i >= 0; i--) cands.add(new Object[]{normal.get(i), "대안"}); // 빠른 순
         for (RaptorRouter.Result r : rail) cands.add(new Object[]{r, "철도 대안"});
 
+        int primDur = primary.durationSec();
         for (Object[] c : cands) {
             if (opts.size() - 1 >= maxAlts) break;
             RaptorRouter.Result r = (RaptorRouter.Result) c[0];
             String tag = (String) c[1];
+            // 비현실적으로 느린 대안 제거: 추천보다 1.8배 & 30분 이상 더 걸리는 경로는 노이즈(예: 완행 철도)로 간주
+            if (!"도보".equals(tag) && r.durationSec() > primDur * 1.8 && r.durationSec() - primDur > 1800) continue;
             if (seen.add(key(r))) opts.add(oneJourney(tt, r, departSec, tag, false));
         }
 
@@ -162,7 +165,8 @@ public class PlanController {
         double dist = Timetable.distanceMeters(fromLat, fromLon, toLat, toLon);
         if (dist > MAX_WALK_M) return null;
         int walkSec = (int) Math.round(dist / WALK_SPEED);
-        RaptorRouter.Leg leg = new RaptorRouter.Leg("WALK", "", "", "출발지", "", "도착지", departSec, departSec + walkSec);
+        List<double[]> path = List.of(new double[]{fromLat, fromLon}, new double[]{toLat, toLon});
+        RaptorRouter.Leg leg = new RaptorRouter.Leg("WALK", "", "", "출발지", "", "도착지", departSec, departSec + walkSec, path);
         return new RaptorRouter.Result(true, departSec + walkSec, walkSec, 0, List.of(leg));
     }
 
@@ -211,6 +215,11 @@ public class PlanController {
             Integer fi = tt.stopIndex.get(l.fromStopId()), ti = tt.stopIndex.get(l.toStopId());
             if (fi != null) { lm.put("fromLat", tt.lat[fi]); lm.put("fromLon", tt.lon[fi]); }
             if (ti != null) { lm.put("toLat", tt.lat[ti]); lm.put("toLon", tt.lon[ti]); }
+            if (l.path() != null && !l.path().isEmpty()) { // 정차 순서대로 경유좌표(지도 선형용)
+                List<List<Double>> pts = new ArrayList<>(l.path().size());
+                for (double[] pt : l.path()) pts.add(List.of(pt[0], pt[1]));
+                lm.put("path", pts);
+            }
             legs.add(lm);
         }
         if (withRealtime) enrichRealtime(legs); // 첫 버스 승차 정류장에 실시간 도착 부착(추천 경로만)
