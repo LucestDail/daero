@@ -38,6 +38,16 @@
     .coord { font-size: 12px; color: #374151; }
     label { font-size: 12px; color: #6b7280; }
     input[type=time], input[type=number] { padding: 4px 6px; }
+    .searchBox { position: relative; margin-bottom: 6px; }
+    .searchBox input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; }
+    .searchBox input:focus { outline: none; border-color: #2563eb; }
+    .results { position: absolute; z-index: 500; left: 0; right: 0; top: 100%; margin-top: 2px; background: #fff;
+      border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); max-height: 240px; overflow-y: auto; display: none; }
+    .resItem { padding: 8px 10px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f3f4f6; display: flex; justify-content: space-between; gap: 8px; }
+    .resItem:last-child { border-bottom: 0; }
+    .resItem:hover { background: #eff6ff; }
+    .resId { color: #9ca3af; font-size: 11px; flex: none; }
+    .noRes { padding: 8px 10px; font-size: 12px; color: #9ca3af; }
     button { background: #111827; color: #fff; border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-size: 14px; }
     button:disabled { opacity: .5; cursor: default; }
     .hint { background: #eff6ff; color: #1e40af; padding: 8px 10px; border-radius: 8px; font-size: 12px; margin-bottom: 12px; }
@@ -134,7 +144,9 @@
   <div id="app">
     <div id="map"></div>
     <div id="panel">
-      <div class="hint">지도를 클릭해 <b>출발</b>(파랑)과 <b>도착</b>(빨강)을 찍으세요.</div>
+      <div class="hint">정류장 이름으로 검색하거나, 지도를 클릭해 <b>출발</b>(파랑)·<b>도착</b>(빨강)을 지정하세요.</div>
+      <div class="searchBox"><input type="text" id="oSearch" placeholder="🔎 출발 정류장 검색 (예: 강남역)" autocomplete="off"/><div class="results" id="oResults"></div></div>
+      <div class="searchBox"><input type="text" id="dSearch" placeholder="🔎 도착 정류장 검색" autocomplete="off"/><div class="results" id="dResults"></div></div>
       <div class="row"><span class="dot o"></span><span class="coord" id="oText">출발 미지정</span></div>
       <div class="row"><span class="dot d"></span><span class="coord" id="dText">도착 미지정</span></div>
       <div class="row"><label>출발 시각</label><input type="time" id="time" value="09:00"/>
@@ -331,20 +343,67 @@
     return L.circleMarker(latlng, { radius: 8, color: cls === 'o' ? '#2563eb' : '#dc2626',
       fillColor: cls === 'o' ? '#2563eb' : '#dc2626', fillOpacity: 1, weight: 2 }).addTo(map);
   }
-  map.on('click', (e) => {
-    if (!origin || (origin && dest)) {
-      if (oMarker) map.removeLayer(oMarker); if (dMarker) map.removeLayer(dMarker);
-      if (routeLayer) map.removeLayer(routeLayer); if (nodeLayer) map.removeLayer(nodeLayer);
-      dest = null; dMarker = null; $('result').innerHTML = '';
-      origin = e.latlng; oMarker = mk(origin, 'o');
-      $('oText').textContent = `출발 ${origin.lat.toFixed(5)}, ${origin.lng.toFixed(5)}`;
-      $('dText').textContent = '도착 미지정';
-    } else {
-      dest = e.latlng; dMarker = mk(dest, 'd');
-      $('dText').textContent = `도착 ${dest.lat.toFixed(5)}, ${dest.lng.toFixed(5)}`;
-    }
+  function clearRoute() {
+    if (routeLayer) map.removeLayer(routeLayer); if (nodeLayer) map.removeLayer(nodeLayer);
+    $('result').innerHTML = '';
+  }
+  function setOrigin(latlng, label) {
+    if (oMarker) map.removeLayer(oMarker);
+    clearRoute();
+    origin = latlng; oMarker = mk(origin, 'o');
+    $('oText').textContent = label || `출발 ${origin.lat.toFixed(5)}, ${origin.lng.toFixed(5)}`;
     $('go').disabled = !(origin && dest);
+  }
+  function setDest(latlng, label) {
+    if (dMarker) map.removeLayer(dMarker);
+    clearRoute();
+    dest = latlng; dMarker = mk(dest, 'd');
+    $('dText').textContent = label || `도착 ${dest.lat.toFixed(5)}, ${dest.lng.toFixed(5)}`;
+    $('go').disabled = !(origin && dest);
+  }
+  map.on('click', (e) => {
+    if (!origin || (origin && dest)) { // 새 출발 지정 시 도착 초기화
+      if (dMarker) { map.removeLayer(dMarker); dMarker = null; }
+      dest = null; $('dText').textContent = '도착 미지정';
+      setOrigin(e.latlng);
+    } else {
+      setDest(e.latlng);
+    }
   });
+
+  // 정류장 이름 검색 → 클릭 시 출발/도착 지정
+  function wireSearch(inputId, resultsId, apply) {
+    const input = $(inputId), box = $(resultsId);
+    let timer = null;
+    input.addEventListener('input', () => {
+      const q = input.value.trim();
+      clearTimeout(timer);
+      if (q.length < 2) { box.style.display = 'none'; return; }
+      timer = setTimeout(async () => {
+        try {
+          const r = await fetch(api(`/api/plan/search?q=${encodeURIComponent(q)}&limit=12`));
+          const list = await r.json();
+          if (!list.length) { box.innerHTML = '<div class="noRes">결과 없음</div>'; box.style.display = 'block'; return; }
+          box.innerHTML = list.map(s =>
+            `<div class="resItem" data-lat="${s.lat}" data-lon="${s.lon}" data-name="${esc(s.name)}">`
+            + `<span>${esc(s.name)}</span><span class="resId">${esc((s.stopId||'').slice(0,2))}</span></div>`).join('');
+          box.style.display = 'block';
+          box.querySelectorAll('.resItem').forEach(el => el.addEventListener('click', () => {
+            const lat = parseFloat(el.dataset.lat), lon = parseFloat(el.dataset.lon);
+            apply(L.latLng(lat, lon), el.dataset.name);
+            input.value = el.dataset.name;
+            box.style.display = 'none';
+            map.setView([lat, lon], 15);
+          }));
+        } catch (e) { box.style.display = 'none'; }
+      }, 250);
+    });
+    document.addEventListener('click', (e) => {
+      if (e.target !== input && !box.contains(e.target)) box.style.display = 'none';
+    });
+  }
+  wireSearch('oSearch', 'oResults', (ll, name) => setOrigin(ll, `출발 · ${name}`));
+  wireSearch('dSearch', 'dResults', (ll, name) => setDest(ll, `도착 · ${name}`));
   $('go').addEventListener('click', async () => {
     if (!origin || !dest) return;
     $('go').disabled = true; $('go').textContent = '탐색 중…';
