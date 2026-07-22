@@ -1,0 +1,30 @@
+# daero — 컨테이너 실행 정의 (M7)
+# 실행: docker compose up -d --build
+# 전제: ./data/timetable.bin (prebuild 스냅샷)이 존재해야 함. 없으면 GTFS 로 최초 1회 빌드 필요
+#       (그 경우 DAERO_GTFS_PATH 지정 + 힙 여유 필요 — README/PLAN 참고).
+services:
+  daero:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: daero:latest
+    container_name: daero
+    ports:
+      - "8090:8090"
+    volumes:
+      # 스냅샷·데이터는 이미지 외부에서 마운트(코드/데이터 분리). 읽기 전용.
+      - ./data:/app/data:ro
+    environment:
+      - JAVA_OPTS=-Xmx1500m
+      - DAERO_TIMETABLE_BIN=/app/data/timetable.bin
+      - DAERO_GTFS_PATH=
+      # 실시간 버스도착 API 키(없으면 실시간 기능만 비활성, 경로탐색은 정상).
+      - TAGO_KEY=${TAGO_KEY:-}
+      - SEOUL_BUS_KEY=${SEOUL_BUS_KEY:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/api/gtfs/stats || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
