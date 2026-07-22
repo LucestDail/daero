@@ -194,6 +194,7 @@
         <tr><th>필드</th><th>타입</th><th>설명</th></tr>
         <tr><td>found</td><td>boolean</td><td>경로 발견 여부</td></tr>
         <tr><td>queryMs</td><td>int</td><td>탐색 소요(ms)</td></tr>
+        <tr><td>accessStops, egressStops</td><td>int</td><td><code>plan/coords</code> 전용 — 출발·도착 좌표 근처에서 접근에 사용한 정류장 수</td></tr>
         <tr><td>options[]</td><td>array</td><td>경로 옵션 목록(추천 + 대안)</td></tr>
         <tr><td>options[].tag</td><td>string</td><td>추천 / 지하철·철도 우선 / 환승 최소 / 대안 …</td></tr>
         <tr><td>options[].departure, arrival</td><td>string</td><td>출발·도착 시각 <code>HH:MM</code></td></tr>
@@ -526,9 +527,13 @@
       desc: '빌드된 경로 자료구조 상태(patterns, 모드별 패턴 patternsByMode 등).',
       params: [], example: '/api/gtfs/timetable' },
     { id: 'realtime', navLabel: 'realtime', method: 'GET', path: '/api/realtime',
-      desc: '정류소(cityCode+nodeId, TAGO 기준)의 <b>실시간 버스 도착</b>. 노선번호·유형·ETA(초/분)·잔여정거장. ' +
+      desc: '정류소(cityCode+nodeId, TAGO 기준)의 <b>실시간 버스 도착</b>. ' +
             '경로탐색 응답에도 추천 경로 첫 버스 leg에 자동 부착(아래 응답 스키마 realtimeMin 참조). ' +
-            'BIS 커버 도시만 데이터 제공(서울은 별도 체계).',
+            'BIS 커버 도시만 데이터 제공(서울은 별도 체계).<br>' +
+            '<b>응답</b>: <code>enabled</code>(실시간 활성 여부), <code>cityCode/nodeId</code>(에코), ' +
+            '<code>count</code>, <code>arrivals[]</code> = { <code>routeNo</code> 노선번호, <code>routeType</code> 노선유형, ' +
+            '<code>stopsLeft</code> 남은 정거장, <code>etaSec</code>/<code>etaMin</code> 도착예정(초/분) }. ' +
+            'TAGO_KEY 미설정 시 <code>enabled=false</code> + 빈 arrivals.',
       params: [
         { n: 'cityCode', req: 1, t: 'string', d: '', desc: '도시코드(예: 25=대전). getCtyCodeList 참고' },
         { n: 'nodeId', req: 1, t: 'string', d: '', desc: 'TAGO 정류소 ID(예: DJB8001793)' },
