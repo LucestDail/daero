@@ -1,0 +1,2 @@
+service_id,date,exception_type
+SVC_ALL,20250101,1
