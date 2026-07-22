@@ -21,6 +21,7 @@ public class PlanController {
 
     private final TimetableBuilder builder;
     private final RaptorRouter router;
+    private final RoutingGate gate;
     private final com.daero.client.TagoStopIndex tagoStops;
     private final com.daero.client.TagoClient tago;
     private final com.daero.client.SeoulBusClient seoulBus;
@@ -74,12 +75,15 @@ public class PlanController {
         if (src == null || dst == null)
             return ResponseEntity.badRequest().body(Map.of("error", "unknown stopId"));
         int departSec = parseTime(time);
-        long t0 = System.nanoTime();
-        int[] s1 = {src}, z = {0}, d1 = {dst};
-        List<RaptorRouter.Result> normal = router.journeys(s1, z, d1, z, departSec, false);
-        List<RaptorRouter.Result> rail = router.journeys(s1, z, d1, z, departSec, true);
-        RaptorRouter.Result walk = walkJourney(tt.lat[src], tt.lon[src], tt.lat[dst], tt.lon[dst], departSec);
-        return ResponseEntity.ok(renderTagged(tt, normal, rail, walk, departSec, clampAlts(alternatives), (System.nanoTime() - t0) / 1_000_000));
+        int alts = clampAlts(alternatives);
+        return ResponseEntity.ok(gate.run(() -> {
+            long t0 = System.nanoTime();
+            int[] s1 = {src}, z = {0}, d1 = {dst};
+            List<RaptorRouter.Result> normal = router.journeys(s1, z, d1, z, departSec, false);
+            List<RaptorRouter.Result> rail = router.journeys(s1, z, d1, z, departSec, true);
+            RaptorRouter.Result walk = walkJourney(tt.lat[src], tt.lon[src], tt.lat[dst], tt.lon[dst], departSec);
+            return renderTagged(tt, normal, rail, walk, departSec, alts, (System.nanoTime() - t0) / 1_000_000);
+        }));
     }
 
     /** 좌표 → 좌표 door-to-door(접근·하차 도보 포함). */
@@ -103,11 +107,14 @@ public class PlanController {
         for (int i = 0; i < dst.size(); i++) { ds[i] = dst.get(i)[0]; de[i] = dst.get(i)[1]; }
 
         int departSec = parseTime(time);
-        long t0 = System.nanoTime();
-        List<RaptorRouter.Result> normal = router.journeys(ss, sa, ds, de, departSec, false);
-        List<RaptorRouter.Result> rail = router.journeys(ss, sa, ds, de, departSec, true);
-        RaptorRouter.Result walk = walkJourney(fromLat, fromLon, toLat, toLon, departSec);
-        Map<String, Object> m = renderTagged(tt, normal, rail, walk, departSec, clampAlts(alternatives), (System.nanoTime() - t0) / 1_000_000);
+        int alts = clampAlts(alternatives);
+        Map<String, Object> m = gate.run(() -> {
+            long t0 = System.nanoTime();
+            List<RaptorRouter.Result> normal = router.journeys(ss, sa, ds, de, departSec, false);
+            List<RaptorRouter.Result> rail = router.journeys(ss, sa, ds, de, departSec, true);
+            RaptorRouter.Result walk = walkJourney(fromLat, fromLon, toLat, toLon, departSec);
+            return renderTagged(tt, normal, rail, walk, departSec, alts, (System.nanoTime() - t0) / 1_000_000);
+        });
         m.put("accessStops", src.size());
         m.put("egressStops", dst.size());
         return ResponseEntity.ok(m);

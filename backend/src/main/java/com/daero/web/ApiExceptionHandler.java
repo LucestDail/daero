@@ -46,6 +46,12 @@ public class ApiExceptionHandler {
         return body(HttpStatus.BAD_REQUEST, "invalid_input", e.getMessage());
     }
 
+    /** 라우팅 게이트 대기 초과(서버 혼잡) → 503. */
+    @ExceptionHandler(RoutingGate.BusyException.class)
+    public ResponseEntity<Map<String, Object>> busy(RoutingGate.BusyException e) {
+        return body(HttpStatus.SERVICE_UNAVAILABLE, "server_busy", e.getMessage());
+    }
+
     /** 그 외 — 스택 트레이스는 로그로만, 응답엔 일반 메시지. */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> generic(Exception e) {
