@@ -28,6 +28,7 @@ public class PlanController {
     /** 이름으로 정류장 검색. */
     @GetMapping("/search")
     public List<Map<String, Object>> search(@RequestParam String q, @RequestParam(defaultValue = "20") int limit) {
+        if (q == null || q.isBlank()) throw new IllegalArgumentException("q(검색어)는 비어 있을 수 없습니다");
         Timetable tt = builder.getTimetable();
         List<Map<String, Object>> out = new ArrayList<>();
         if (tt == null) return out;
@@ -43,6 +44,8 @@ public class PlanController {
     @GetMapping("/near")
     public List<Map<String, Object>> near(@RequestParam double lat, @RequestParam double lon,
                                           @RequestParam(defaultValue = "800") double radius) {
+        requireCoord(lat, lon, "기준");
+        radius = Math.min(Math.max(radius, 0), 5000); // 과도한 스캔 방지
         Timetable tt = builder.getTimetable();
         List<Map<String, Object>> out = new ArrayList<>();
         if (tt == null) return out;
@@ -85,6 +88,8 @@ public class PlanController {
                                     @RequestParam double toLat, @RequestParam double toLon,
                                     @RequestParam(required = false) String time,
                                     @RequestParam(defaultValue = "1") int alternatives) {
+        requireCoord(fromLat, fromLon, "출발");
+        requireCoord(toLat, toLon, "도착");
         Timetable tt = builder.getTimetable();
         if (tt == null) return ResponseEntity.status(503).body(Map.of("error", "timetable not built"));
         List<int[]> src = topAccess(tt.nearestStops(fromLat, fromLon, ACCESS_RADIUS_M, WALK_SPEED));
@@ -304,11 +309,24 @@ public class PlanController {
             java.time.LocalTime now = java.time.LocalTime.now(java.time.ZoneId.of("Asia/Seoul"));
             return now.getHour() * 3600 + now.getMinute() * 60 + now.getSecond();
         }
-        String[] p = s.split(":");
-        int h = Integer.parseInt(p[0].trim());
-        int m = p.length > 1 ? Integer.parseInt(p[1].trim()) : 0;
-        int sec = p.length > 2 ? Integer.parseInt(p[2].trim()) : 0;
-        return h * 3600 + m * 60 + sec;
+        try {
+            String[] p = s.split(":");
+            int h = Integer.parseInt(p[0].trim());
+            int m = p.length > 1 ? Integer.parseInt(p[1].trim()) : 0;
+            int sec = p.length > 2 ? Integer.parseInt(p[2].trim()) : 0;
+            if (h < 0 || h > 47 || m < 0 || m > 59 || sec < 0 || sec > 59)
+                throw new IllegalArgumentException("time 범위 오류(HH:MM, 00~47시): " + s);
+            return h * 3600 + m * 60 + sec;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("time 형식 오류(HH:MM 기대): " + s);
+        }
+    }
+
+    /** 좌표 유효성(NaN·범위) 검증. 실패 시 IllegalArgumentException → 400. */
+    private static void requireCoord(double lat, double lon, String which) {
+        if (Double.isNaN(lat) || Double.isNaN(lon) || Double.isInfinite(lat) || Double.isInfinite(lon)
+                || lat < -90 || lat > 90 || lon < -180 || lon > 180)
+            throw new IllegalArgumentException(which + " 좌표 범위 오류: lat=" + lat + ", lon=" + lon);
     }
 
     private static String fmt(int sec) {

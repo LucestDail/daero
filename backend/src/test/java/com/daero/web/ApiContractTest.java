@@ -66,8 +66,44 @@ class ApiContractTest {
     }
 
     @Test
-    void 필수파라미터_누락시_400() throws Exception {
+    void 필수파라미터_누락시_400_JSON() throws Exception {
         mvc.perform(get("/api/plan/coords"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("missing_parameter"));
+    }
+
+    @Test
+    void 좌표_형식오류시_400() throws Exception {
+        mvc.perform(get("/api/plan/coords")
+                        .param("fromLat", "abc").param("fromLon", "127.0")
+                        .param("toLat", "37.5").param("toLon", "127.0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_parameter"));
+    }
+
+    @Test
+    void 좌표_범위초과시_400() throws Exception {
+        mvc.perform(get("/api/plan/coords")
+                        .param("fromLat", "999").param("fromLon", "127.0")
+                        .param("toLat", "37.5").param("toLon", "127.0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_input"));
+    }
+
+    @Test
+    void 잘못된_시각형식시_400() throws Exception {
+        mvc.perform(get("/api/plan/coords")
+                        .param("fromLat", "37.5000").param("fromLon", "127.0000")
+                        .param("toLat", "37.5400").param("toLon", "127.0000")
+                        .param("time", "빠른시각"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_input"));
+    }
+
+    @Test
+    void 빈검색어시_400() throws Exception {
+        mvc.perform(get("/api/plan/search").param("q", "  "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_input"));
     }
 }
