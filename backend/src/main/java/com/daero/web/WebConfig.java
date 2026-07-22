@@ -13,7 +13,8 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**").allowedOrigins("*").allowedMethods("GET", "POST");
+        // 공개 읽기 전용 API — 모든 origin 허용, GET만(모든 엔드포인트가 GET이라 POST 불필요).
+        registry.addMapping("/api/**").allowedOrigins("*").allowedMethods("GET");
     }
 
     @Override
