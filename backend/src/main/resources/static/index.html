@@ -436,6 +436,11 @@
   function showAd() {
     const slot = $('adSlot');
     if (!slot) return;
+    // 광고단위 코드 미발급(placeholder) 상태면 슬롯을 숨긴 채 no-op → 깨진 광고요청 방지.
+    // 발급 후 아래 <ins>의 data-ad-unit 을 실제 DAN-... 코드로 교체하면 자동 노출.
+    const ins = slot.querySelector('.kakao_ad_area');
+    const unit = ins && ins.getAttribute('data-ad-unit');
+    if (!unit || unit.indexOf('DAN-XXXX') === 0) return;
     slot.style.display = 'block';
     try { if (!adShown && window.adfit) { window.adfit.render(); } } catch (e) {}
     adShown = true;
