@@ -1,0 +1,7 @@
+[Unit]
+Description=daero health watchdog (self-heal on hang)
+After=daero.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/ubuntu/daero/deploy/daero-watchdog.sh
