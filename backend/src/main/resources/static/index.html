@@ -52,6 +52,10 @@
     button:disabled { opacity: .5; cursor: default; }
     .hint { background: #eff6ff; color: #1e40af; padding: 8px 10px; border-radius: 8px; font-size: 12px; margin-bottom: 12px; }
     .errmsg { background: #fef2f2; color: #b91c1c; padding: 10px 12px; border-radius: 8px; font-size: 13px; border: 1px solid #fecaca; }
+    .dlBar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 14px 0 2px; }
+    .dlBtn { background: #111827; color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
+    .dlBtn:hover { background: #374151; }
+    .dlNote { font-size: 12px; color: #6b7280; }
     .times { color: #6b7280; font-size: 12px; }
     .opt { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: #fff; cursor: pointer; }
     .opt.sel { border-color: #111827; box-shadow: 0 0 0 2px rgba(17,24,39,.08); }
@@ -183,6 +187,11 @@
         <tr><th>메서드</th><td>GET</td></tr>
         <tr><th>시각 형식</th><td><code>HH:MM</code> / <code>HH:MM:SS</code> (자정 기준, 24시 초과 = 심야)</td></tr>
       </table>
+      <div class="dlBar">
+        <button class="dlBtn" id="dlMd">📄 Markdown 다운로드</button>
+        <button class="dlBtn" id="dlJson">{ } OpenAPI JSON 다운로드</button>
+        <span class="dlNote">이 스펙을 Claude Code·Cursor 등 LLM 도구에 넣으면 연동 코드를 바로 생성할 수 있어요.</span>
+      </div>
     </section>
 
     <!-- 엔드포인트 카드: JS 자동 생성 -->
@@ -633,6 +642,79 @@
     if (navigator.clipboard) navigator.clipboard.writeText(txt);
     btn.textContent = '복사됨'; setTimeout(() => btn.textContent = '복사', 1200);
   }));
+
+  // ── LLM/코드생성용 API 스펙 다운로드 (Markdown / OpenAPI JSON) ──
+  // 별도 서버 엔드포인트 없이, 페이지의 ENDPOINTS + 응답/에러 표에서 즉석 생성(문서와 항상 동기화).
+  // 생성한 Markdown 은 숨은 노드로 DOM 에 넣어 크롤러가 읽게 한다(SEO).
+  const SPEC_BASE = 'https://daero.duckdns.org';
+  const stripTags = (s) => (s || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  function tableRows(sel) {
+    const t = document.querySelector(sel + ' table'); if (!t) return [];
+    return [...t.querySelectorAll('tr')].map(tr => [...tr.querySelectorAll('th,td')].map(c => stripTags(c.innerHTML)));
+  }
+  function mdTable(rows) {
+    if (!rows.length) return '';
+    const head = `| ${rows[0].join(' | ')} |\n|${rows[0].map(() => '---').join('|')}|\n`;
+    return head + rows.slice(1).map(r => `| ${r.join(' | ')} |`).join('\n') + '\n\n';
+  }
+  function buildApiMarkdown() {
+    let md = `# daero (대로) — 대중교통 경로탐색 오픈 API\n\n`;
+    md += `GTFS 기반 국내 대중교통(버스·지하철·철도·여객선) door-to-door 경로탐색 API. 인증 불필요, JSON(UTF-8) 응답.\n\n`;
+    md += `- Base URL: \`${SPEC_BASE}\`\n- 인증: 없음(공개)\n- 메서드: GET\n- 시각 형식: \`HH:MM\` / \`HH:MM:SS\` (자정 기준, 24시 초과 = 심야)\n\n`;
+    md += `## 엔드포인트\n\n`;
+    ENDPOINTS.forEach(ep => {
+      md += `### ${ep.method} ${ep.path}\n${stripTags(ep.desc)}\n\n`;
+      if (ep.params.length) {
+        md += mdTable([['파라미터', '필수', '타입', '기본', '설명'],
+          ...ep.params.map(p => [p.n, p.req ? '필수' : '선택', p.t, p.d || '—', stripTags(p.desc)])]);
+      }
+      md += `예: \`${ep.method} ${SPEC_BASE}${ep.example}\`\n\n`;
+    });
+    const resp = tableRows('#sec-response');
+    if (resp.length) { md += `## 응답 스키마 (경로 API 공통)\n\n` + mdTable(resp); }
+    const err = tableRows('#sec-errors');
+    if (err.length) { md += `## 에러 응답 & 상태 코드\n오류 시 \`{ "error": "코드", "message": "설명" }\` 형식.\n\n` + mdTable(err); }
+    md += `## 활용\n이 파일을 Claude Code·Cursor 등 LLM 도구에 넣고 원하는 연동을 요청하세요. `;
+    md += `함께 제공되는 OpenAPI JSON 으로 클라이언트 코드 자동생성도 가능합니다.\n`;
+    return md;
+  }
+  function buildOpenApi() {
+    const typeOf = t => t === 'double' ? 'number' : t === 'int' ? 'integer' : 'string';
+    const paths = {};
+    ENDPOINTS.forEach(ep => {
+      paths[ep.path] = { get: {
+        summary: stripTags(ep.desc),
+        parameters: ep.params.map(p => ({
+          name: p.n, in: 'query', required: !!p.req,
+          schema: { type: typeOf(p.t) }, description: stripTags(p.desc)
+        })),
+        responses: { '200': { description: 'OK' }, '400': { description: 'invalid_input / invalid_parameter / missing_parameter' },
+          '429': { description: 'rate_limited' }, '503': { description: 'server_busy' } }
+      } };
+    });
+    return JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'daero API', version: '1.0.0',
+        description: 'GTFS 기반 국내 대중교통 door-to-door 경로탐색 오픈 API (인증 불필요).' },
+      servers: [{ url: SPEC_BASE }],
+      paths
+    }, null, 2);
+  }
+  function downloadFile(name, text, mime) {
+    const blob = new Blob([text], { type: mime + ';charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  }
+  const apiMd = buildApiMarkdown();
+  $('dlMd') && $('dlMd').addEventListener('click', () => downloadFile('daero-api.md', apiMd, 'text/markdown'));
+  $('dlJson') && $('dlJson').addEventListener('click', () => downloadFile('daero-openapi.json', buildOpenApi(), 'application/json'));
+  // SEO: 생성한 Markdown 을 숨은 노드로 DOM 에 포함(크롤러가 본문 텍스트로 인식)
+  const seoNode = document.createElement('div');
+  seoNode.id = 'apiSpecSeo'; seoNode.hidden = true; seoNode.setAttribute('aria-hidden', 'true');
+  seoNode.textContent = apiMd;
+  $('docsMain').appendChild(seoNode);
   // 호출 테스트(엔드포인트별)
   document.querySelectorAll('.tryGo').forEach(btn => btn.addEventListener('click', async () => {
     const id = btn.dataset.ep;
