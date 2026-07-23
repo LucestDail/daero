@@ -51,6 +51,7 @@
     button { background: #111827; color: #fff; border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-size: 14px; }
     button:disabled { opacity: .5; cursor: default; }
     .hint { background: #eff6ff; color: #1e40af; padding: 8px 10px; border-radius: 8px; font-size: 12px; margin-bottom: 12px; }
+    .errmsg { background: #fef2f2; color: #b91c1c; padding: 10px 12px; border-radius: 8px; font-size: 13px; border: 1px solid #fecaca; }
     .times { color: #6b7280; font-size: 12px; }
     .opt { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: #fff; cursor: pointer; }
     .opt.sel { border-color: #111827; box-shadow: 0 0 0 2px rgba(17,24,39,.08); }
@@ -420,14 +421,31 @@
   }
   wireSearch('oSearch', 'oResults', (ll, name) => setOrigin(ll, `출발 · ${name}`));
   wireSearch('dSearch', 'dResults', (ll, name) => setDest(ll, `도착 · ${name}`));
+  // API 에러코드 → 사용자 친화 메시지(백엔드 message 우선, 없으면 매핑).
+  function errText(status, d) {
+    const byCode = {
+      rate_limited: '요청이 많아 잠시 제한됐어요. 잠시 후 다시 시도해 주세요.',
+      server_busy: '서버가 혼잡해요. 잠시 후 다시 시도해 주세요.',
+      'no nearby stops': '출발·도착 근처에 정류장이 없어요. 위치를 옮겨 찍어보세요.',
+    };
+    if (d && d.error && byCode[d.error]) return byCode[d.error];
+    if (d && d.message) return d.message;                 // invalid_input 등 백엔드 설명
+    if (status === 503) return '서버 준비 중이에요. 잠시 후 다시 시도해 주세요.';
+    return '요청 처리 중 오류가 발생했어요.';
+  }
+  function showError(msg) { $('result').innerHTML = `<div class="errmsg">⚠️ ${msg}</div>`; }
+
   $('go').addEventListener('click', async () => {
     if (!origin || !dest) return;
     $('go').disabled = true; $('go').textContent = '탐색 중…';
+    $('result').innerHTML = '<div class="hint">🔎 경로를 탐색하고 있어요…</div>';
     try {
       const t = $('time').value || nowHM(), alts = $('alts').value || '1';
       const r = await fetch(api(`/api/plan/coords?fromLat=${origin.lat}&fromLon=${origin.lng}&toLat=${dest.lat}&toLon=${dest.lng}&time=${t}&alternatives=${alts}`));
-      render(await r.json());
-    } catch (err) { $('result').innerHTML = `<div class="hint">오류: ${err}</div>`; }
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { showError(errText(r.status, d)); return; }
+      render(d);
+    } catch (err) { showError('네트워크 연결을 확인해 주세요.'); }
     finally { $('go').disabled = false; $('go').textContent = '경로 찾기'; }
   });
   function render(d) {
